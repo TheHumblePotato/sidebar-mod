@@ -63,9 +63,15 @@ implemented yet.
    sees the other's line.
 
 **Note:** the packet constructor signatures in `SidebarManager.java`
-were written from the last verified 1.20.3+ field layout of
-`ClientboundSetObjectivePacket` / `ClientboundSetDisplayObjectivePacket` /
-`ClientboundSetScorePacket`. They have not been compiled against the
-actual 26.2 jars yet — if `./gradlew build` reports a constructor
-mismatch, check the real signature in your IDE (Loom will have pulled
-the real Mojang-mapped sources) and adjust the call site accordingly.
+have been checked against the real 26.2 decompiled sources (`Objective`,
+`ClientboundSetObjectivePacket`, `ClientboundSetDisplayObjectivePacket`).
+Two remaining assumptions haven't been individually confirmed against
+26.2 and are worth a second look if `./gradlew build` still errors:
+
+- `ObjectiveCriteria.DUMMY` is the static field name for the vanilla
+  "dummy" criterion (stable across many past versions).
+- `Scoreboard` has a public no-arg constructor (true on `ServerScoreboard`'s
+  parent class historically).
+
+If either is wrong, F12 into the class in question and the fix is a
+one-line change.
