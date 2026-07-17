@@ -1,0 +1,24 @@
+{
+	"schemaVersion": 1,
+	"id": "lmssmp-sidebar",
+	"version": "${version}",
+	"name": "LMSSMP Sidebar",
+	"description": "Packet-based per-player sidebar display layer for the LMSSMP datapack.",
+	"authors": [
+		"LMSSMP"
+	],
+	"contact": {},
+	"license": "ARR",
+	"environment": "server",
+	"entrypoints": {
+		"main": [
+			"com.lmssmp.sidebar.SidebarMod"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "26.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

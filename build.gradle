@@ -1,0 +1,51 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+repositories {
+	// Loom automatically adds the Fabric/Mojang repositories needed to
+	// resolve Minecraft and Fabric API. Only add repos here for other
+	// mod dependencies.
+}
+
+java {
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
+
+dependencies {
+	// Minecraft 26.2 ships unobfuscated with Mojang's official names, so
+	// there is no `mappings` dependency anymore -- Loom consumes the
+	// official mappings directly.
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+
+	// Non-obfuscated versions don't need remapping, so these are plain
+	// `implementation`, not `modImplementation`.
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+}
+
+processResources {
+	inputs.property 'version', project.version
+	filteringCharset 'UTF-8'
+
+	filesMatching('fabric.mod.json') {
+		expand version: project.version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.encoding = 'UTF-8'
+	it.options.release.set(25)
+}
+
+// Non-obfuscated versions don't need a remap step -- the plain `jar` task
+// (not `remapJar`) already produces the deployable mod jar directly.
