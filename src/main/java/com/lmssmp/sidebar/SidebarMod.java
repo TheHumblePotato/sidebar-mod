@@ -33,7 +33,11 @@ public final class SidebarMod implements ModInitializer {
 		// connection.
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
 			ServerPlayer player = handler.getPlayer();
-			SidebarManager.showSidebar(player, List.of("Hello " + player.getGameProfile().name()));
+			SidebarManager.showSidebar(player, List.of(
+				"Hello " + name,
+				"Milestone 4",
+				"Packet Sidebar"
+			));
 		});
 	}
 }
