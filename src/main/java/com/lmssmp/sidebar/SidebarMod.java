@@ -1,16 +1,18 @@
 package com.lmssmp.sidebar;
 
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Milestone 2: initialization check.
+ * Milestone 3: minimal proof of per-player sidebars.
  *
- * Still no sidebar, player, or control point logic -- this only confirms
- * to a server operator (via console log) that Fabric loaded the mod
- * successfully. Later milestones will delegate real work to
- * {@code sidebar.SidebarManager} instead of growing this class.
+ * On join, each player's connection is sent its own set of scoreboard
+ * packets via {@link SidebarManager}. Nothing is registered on the shared
+ * world scoreboard, so no other client ever receives these packets.
+ * Later milestones will delegate real content (scores, teams, control
+ * points) to SidebarManager instead of growing this class.
  */
 public final class SidebarMod implements ModInitializer {
 
@@ -21,9 +23,11 @@ public final class SidebarMod implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
-		// Milestone 2 only confirms the mod loads. Real initialization
-		// (SidebarManager, ControlPointManager, ConfigManager, etc.)
-		// is added in later milestones, one at a time.
 		LOGGER.info("[LMSSMP Sidebar] Mod initialized successfully");
+
+		// Milestone 3: send the static test sidebar as soon as a player's
+		// connection is fully set up. Touches only that one connection.
+		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
+				SidebarManager.showTestSidebar(handler.getPlayer()));
 	}
 }
