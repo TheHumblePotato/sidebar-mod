@@ -41,7 +41,16 @@ gradle wrapper --gradle-version 9.6.1
       sent per-connection via `SidebarManager` on `ServerPlayConnectionEvents.JOIN`.
       No shared scoreboard object is used, so each player only ever
       receives their own packets.
-- [ ] Milestone 4 — per-player sidebar (two players, different text)
+- [x] Milestone 4 — refactored into a reusable renderer:
+      `SidebarManager.showSidebar(player, List<String> lines)` replaces the
+      single-purpose `showTestSidebar`. Lines are shown using stable fake
+      score holders (`line_0`, `line_1`, ...) with their visible text set
+      via `ClientboundSetScorePacket`'s display-Component field, not the
+      holder name itself, so a line's identity stays stable even if its
+      text changes later. `SidebarState` (package-private) tracks each
+      online player's current lines as scaffolding for Milestone 9's
+      diff-based updates. Still only tested with the same content as
+      Milestone 3.
 - [ ] Milestone 5 — read player scoreboard objectives
 - [ ] Milestone 6 — read teams
 - [ ] Milestone 7 — leaderboard

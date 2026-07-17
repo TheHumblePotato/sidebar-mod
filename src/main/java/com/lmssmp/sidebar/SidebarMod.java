@@ -2,17 +2,20 @@ package com.lmssmp.sidebar;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.minecraft.server.level.ServerPlayer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
+
 /**
- * Milestone 3: minimal proof of per-player sidebars.
- *
- * On join, each player's connection is sent its own set of scoreboard
- * packets via {@link SidebarManager}. Nothing is registered on the shared
- * world scoreboard, so no other client ever receives these packets.
- * Later milestones will delegate real content (scores, teams, control
- * points) to SidebarManager instead of growing this class.
+ * Milestone 4: still only shows the same test content as Milestone 3
+ * ("Hello <player name>"), but now goes through the generic
+ * SidebarManager#showSidebar(player, lines) API instead of a
+ * single-purpose test method. Nothing is registered on the shared world
+ * scoreboard, so no other client ever receives these packets. Later
+ * milestones will replace the hard-coded line list here with real
+ * content read from the datapack's scoreboard/team/armor-stand data.
  */
 public final class SidebarMod implements ModInitializer {
 
@@ -25,9 +28,12 @@ public final class SidebarMod implements ModInitializer {
 	public void onInitialize() {
 		LOGGER.info("[LMSSMP Sidebar] Mod initialized successfully");
 
-		// Milestone 3: send the static test sidebar as soon as a player's
-		// connection is fully set up. Touches only that one connection.
-		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
-				SidebarManager.showTestSidebar(handler.getPlayer()));
+		// Milestone 4: send the (still static) test sidebar as soon as a
+		// player's connection is fully set up. Touches only that one
+		// connection.
+		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+			ServerPlayer player = handler.getPlayer();
+			SidebarManager.showSidebar(player, List.of("Hello " + player.getGameProfile().name()));
+		});
 	}
 }
