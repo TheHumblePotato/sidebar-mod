@@ -1,31 +1,29 @@
 package com.lmssmp.sidebar;
 
-import net.minecraft.network.chat.Component;
-
-import java.util.List;
-
 /**
- * Tracks what a single player's sidebar currently looks like.
+ * Tracks the most recently rendered SidebarContent for a single player.
  *
- * Milestone 4 only uses this to know whether a player currently has an
- * active sidebar. Milestone 9 (diff-based caching) will compare the old
- * lines stored here against the new lines passed to showSidebar() so we
- * can send score packets only for lines that actually changed, instead
- * of rebuilding the whole sidebar on every call.
+ * Milestone 10 uses this so SidebarMod's update loop can compare a
+ * freshly-built SidebarContent against what was last actually sent, and
+ * skip rebuilding (and re-sending packets) entirely when nothing
+ * changed. SidebarContent is an immutable record, so it's stored
+ * directly rather than copied field-by-field, and its generated
+ * equals()/hashCode() (value-based, not identity-based) is what the
+ * comparison relies on.
  */
 final class SidebarState {
 
-	private List<Component> lines = List.of();
+	private SidebarContent lastContent;
 
-	List<Component> lines() {
-		return lines;
+	SidebarContent lastContent() {
+		return lastContent;
 	}
 
-	void setLines(List<Component> lines) {
-		this.lines = lines;
+	void setLastContent(SidebarContent content) {
+		this.lastContent = content;
 	}
 
 	boolean isActive() {
-		return !lines.isEmpty();
+		return lastContent != null;
 	}
 }

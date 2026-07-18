@@ -37,9 +37,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * score holder in an objective to be unique, but "line_2" and "line_4"
  * are unique regardless of whether their displayed Components happen to
  * both be empty. It also keeps a line's identity stable even if its text
- * changes on a future update -- which matters once Milestone 9 adds
- * diffing, since diffing needs a stable key to compare against, not the
- * text itself.
+ * changes on a future update -- which matters once Milestone 11 adds
+ * line-level packet diffing, since diffing needs a stable key to
+ * compare against, not the text itself.
  *
  * As of 26.2, ClientboundSetObjectivePacket and
  * ClientboundSetDisplayObjectivePacket both take a real Objective
@@ -76,9 +76,12 @@ public final class SidebarManager {
 	/**
 	 * Shows (or replaces) a player's sidebar with the given content.
 	 * Rebuilds the objective from scratch every call -- simple and always
-	 * correct, at the cost of a small amount of extra traffic. Milestone 9
-	 * will replace this with diff-based updates that only re-send lines
-	 * that actually changed.
+	 * correct, at the cost of a small amount of extra traffic. This
+	 * method itself doesn't know or care whether content actually
+	 * changed since last time -- that decision belongs to the caller
+	 * (see Milestone 10's update loop in SidebarMod, and
+	 * getLastContent() below). Milestone 11 will replace the body of
+	 * this method with diff-based line updates.
 	 */
 	public static void showSidebar(ServerPlayer player, SidebarContent content) {
 		removeObjective(player);
@@ -110,7 +113,19 @@ public final class SidebarManager {
 		}
 
 		STATES.computeIfAbsent(player.getUUID(), id -> new SidebarState())
-				.setLines(lines);
+				.setLastContent(content);
+	}
+
+	/**
+	 * Returns the SidebarContent most recently rendered for a player, or
+	 * null if none has been shown yet. Lets the update loop decide
+	 * whether rebuilding is even necessary before calling showSidebar --
+	 * SidebarManager itself still rebuilds unconditionally whenever it's
+	 * asked to.
+	 */
+	public static SidebarContent getLastContent(ServerPlayer player) {
+		SidebarState state = STATES.get(player.getUUID());
+		return state != null ? state.lastContent() : null;
 	}
 
 	/** Removes the objective (and therefore the sidebar) from one client. */

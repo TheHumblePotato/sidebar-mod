@@ -9,17 +9,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Milestone 9: the sidebar no longer only updates on join -- a server
- * tick callback now rebuilds every online player's sidebar roughly once
- * a second, using the exact same pipeline the join hook already used
- * (SidebarContentBuilder -> SidebarContent -> SidebarManager). Nothing
- * is registered on the shared world scoreboard by this mod, so no other
- * client ever receives these packets.
+ * Milestone 10: the tick loop now builds fresh content every refresh but
+ * only calls SidebarManager (and only sends packets) when that content
+ * actually differs from what was last rendered for that player --
+ * SidebarContent's value-based equals() (a Java record) makes that a
+ * plain .equals() call, no manual field comparisons. SidebarManager
+ * itself is unchanged: it still rebuilds unconditionally whenever asked,
+ * the decision to ask lives entirely here.
  *
- * This is a full rebuild every refresh, not a diff -- correctness over
- * efficiency for now, per Milestone 9's scope. Milestone 10+ can replace
- * the body of the tick callback with something smarter without this
- * class's structure needing to change.
+ * This is a full rebuild every time content *does* change, not a diff --
+ * correctness over efficiency for now, per Milestone 10's scope.
+ * Milestone 11 can replace showSidebar's body with line-level diffing
+ * without this class needing to change.
  */
 public final class SidebarMod implements ModInitializer {
 
@@ -57,7 +58,20 @@ public final class SidebarMod implements ModInitializer {
 		ticksSinceLastRefresh = 0;
 
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-			SidebarManager.showSidebar(player, SidebarContentBuilder.buildSidebarContent(player));
+			SidebarContent content = SidebarContentBuilder.buildSidebarContent(player);
+			SidebarContent previous = SidebarManager.getLastContent(player);
+			String name = player.getGameProfile().name();
+
+			// TEMP debug logging for Milestone 10 -- safe to delete once
+			// change detection is trusted; kept to one line per player so
+			// it's easy to grep and easy to remove.
+			if (content.equals(previous)) {
+				LOGGER.info("[Sidebar] No changes for {}", name);
+				continue;
+			}
+
+			SidebarManager.showSidebar(player, content);
+			LOGGER.info("[Sidebar] Updated {}", name);
 		}
 	}
 }

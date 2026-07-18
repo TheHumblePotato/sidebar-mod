@@ -86,29 +86,33 @@ gradle wrapper --gradle-version 9.6.1
       through the same pipeline the join hook uses. Full rebuild every
       refresh, no diffing yet -- `SidebarManager`/`SidebarContentBuilder`
       untouched.
-- [ ] Milestone 10 — diff-based caching / update optimization
-- [ ] Milestone 11 — `config/lmssmp-sidebar.json`
-- [ ] Milestone 12 — testing and cleanup
+- [x] Milestone 10 — change detection: `SidebarState` now stores the
+      last-rendered `SidebarContent` itself (value-based equality via its
+      generated record `equals()`) instead of just a `List<Component>`.
+      `SidebarManager` gained one small read accessor, `getLastContent(player)`
+      -- otherwise unchanged, still rebuilds unconditionally whenever asked.
+      `SidebarMod`'s tick loop now builds fresh content every second, compares
+      it against `getLastContent`, and only calls `showSidebar` (and logs
+      `[Sidebar] Updated <name>`) when they differ; otherwise it logs
+      `[Sidebar] No changes for <name>` and sends nothing.
+- [ ] Milestone 11 — line-level packet diffing / update optimization
+- [ ] Milestone 12 — `config/lmssmp-sidebar.json`
+- [ ] Milestone 13 — testing and cleanup
 
-Each milestone is a separate change; nothing after Milestone 9 has been
+Each milestone is a separate change; nothing after Milestone 10 has been
 implemented yet.
 
-### Testing Milestone 9
+### Testing Milestone 10
 
 1. `./gradlew build` and run a dedicated 26.2 server with the built jar.
-2. Join, then run `/scoreboard players set <name> score 5` while
-   already connected (don't rejoin).
-3. Within about a second, confirm the sidebar's `Score:` line updates on
-   its own -- no reconnect needed. This is the actual behavior change
-   from Milestone 8, where you had to rejoin to see any update.
-4. Watch for visible flicker: because this is a full rebuild (remove +
-   re-add the objective) every refresh, some client-side flicker is
-   expected and acceptable for this milestone -- Milestone 10 is where
-   that gets fixed via diffing.
-
-**Note:** `ServerTickEvents.END_SERVER_TICK` and
-`MinecraftServer#getPlayerList().getPlayers()` haven't been checked
-against 26.2 decompiled sources directly -- both are long-stable,
-widely-used APIs (Fabric's own tick event, and vanilla's player list
-accessor), but the first things to check with F12 if `./gradlew build`
-errors in `SidebarMod`.
+2. Join and watch the server console. You should see one
+   `[Sidebar] Updated <name>` line right after joining.
+3. Wait a few seconds with nothing changing. You should now see
+   `[Sidebar] No changes for <name>` once per second instead -- and no
+   visible sidebar flicker in-game during that stretch.
+4. Run `/scoreboard players set <name> score 5`. Within a second you
+   should see `[Sidebar] Updated <name>` again, the score change on
+   screen, and a brief flicker (expected -- see below).
+5. The debug logging is intentionally temporary (marked `TEMP` in
+   `SidebarMod.java`) -- delete the two `LOGGER.info(...)` calls once
+   this is trusted, no other cleanup needed.
