@@ -51,7 +51,15 @@ gradle wrapper --gradle-version 9.6.1
       online player's current lines as scaffolding for Milestone 9's
       diff-based updates. Still only tested with the same content as
       Milestone 3.
-- [ ] Milestone 5 — read player scoreboard objectives
+- [x] Milestone 5 — first real content reader: `SidebarContentBuilder`
+      reads the datapack-owned `"score"` objective for a player via
+      `Scoreboard#getObjective` / `Scoreboard#getPlayerScoreInfo` (read-only
+      calls to the *real* server scoreboard -- a separate instance from
+      `SidebarManager`'s private scratch scoreboard) and returns
+      `["Score: <value>"]`, or `["Score: 0"]` if the objective or the
+      player's entry doesn't exist yet. `SidebarMod`'s join hook now
+      chains `SidebarContentBuilder.buildSidebarLines(player)` into
+      `SidebarManager.showSidebar(player, lines)`.
 - [ ] Milestone 6 — read teams
 - [ ] Milestone 7 — leaderboard
 - [ ] Milestone 8 — dynamic control points (tagged armor stands)
@@ -59,28 +67,26 @@ gradle wrapper --gradle-version 9.6.1
 - [ ] Milestone 10 — `config/lmssmp-sidebar.json`
 - [ ] Milestone 11 — testing and cleanup
 
-Each milestone is a separate change; nothing after Milestone 3 has been
+Each milestone is a separate change; nothing after Milestone 5 has been
 implemented yet.
 
-### Testing Milestone 3
+### Testing Milestone 5
 
-1. `./gradlew build` and run a dedicated 26.2 server with the built jar.
-2. Join with two different accounts (or a second test account on a
-   second client).
-3. Confirm each player sees `LMSSMP` as the sidebar title and
-   `Hello <their own name>` as the single line, and that neither player
-   sees the other's line.
+1. Have the datapack (or a manual `/scoreboard objectives add score dummy`
+   for testing) create an objective named `score`.
+2. `./gradlew build` and run a dedicated 26.2 server with the built jar.
+3. Set a test score: `/scoreboard players set <name> score 1234`, then have
+   that player join (or rejoin).
+4. Confirm the sidebar shows `LMSSMP` as the title and `Score: 1234` as
+   the line.
+5. Join with a player who has no `score` entry yet and confirm the line
+   reads `Score: 0` instead of erroring.
 
 **Note:** the packet constructor signatures in `SidebarManager.java`
 have been checked against the real 26.2 decompiled sources (`Objective`,
-`ClientboundSetObjectivePacket`, `ClientboundSetDisplayObjectivePacket`).
-Two remaining assumptions haven't been individually confirmed against
-26.2 and are worth a second look if `./gradlew build` still errors:
-
-- `ObjectiveCriteria.DUMMY` is the static field name for the vanilla
-  "dummy" criterion (stable across many past versions).
-- `Scoreboard` has a public no-arg constructor (true on `ServerScoreboard`'s
-  parent class historically).
-
-If either is wrong, F12 into the class in question and the fix is a
-one-line change.
+`ClientboundSetObjectivePacket`, `ClientboundSetDisplayObjectivePacket`,
+`Scoreboard`). `SidebarContentBuilder.java`'s reading code
+(`Scoreboard#getPlayerScoreInfo`, `ReadOnlyScoreInfo#value()`) has only
+been checked against public javadoc for 1.20.6–1.21.11, not decompiled
+26.2 sources directly -- see the API-uncertainties note in chat for what
+to check first if `./gradlew build` errors here.

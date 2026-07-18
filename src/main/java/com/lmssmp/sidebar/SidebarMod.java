@@ -6,16 +6,14 @@ import net.minecraft.server.level.ServerPlayer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
-
 /**
- * Milestone 4: still only shows the same test content as Milestone 3
- * ("Hello <player name>"), but now goes through the generic
- * SidebarManager#showSidebar(player, lines) API instead of a
- * single-purpose test method. Nothing is registered on the shared world
- * scoreboard, so no other client ever receives these packets. Later
- * milestones will replace the hard-coded line list here with real
- * content read from the datapack's scoreboard/team/armor-stand data.
+ * Milestone 5: sidebar content now comes from a real (datapack-owned)
+ * scoreboard objective via SidebarContentBuilder, instead of a
+ * hard-coded test string. Nothing is registered on the shared world
+ * scoreboard by this mod, so no other client ever receives these
+ * packets. Later milestones will extend SidebarContentBuilder with
+ * teams and control points; this class shouldn't need to change again
+ * until content needs to update on more than just join (Milestone 8+).
  */
 public final class SidebarMod implements ModInitializer {
 
@@ -28,16 +26,12 @@ public final class SidebarMod implements ModInitializer {
 	public void onInitialize() {
 		LOGGER.info("[LMSSMP Sidebar] Mod initialized successfully");
 
-		// Milestone 4: send the (still static) test sidebar as soon as a
-		// player's connection is fully set up. Touches only that one
+		// Milestone 5: read real scoreboard content and render it as soon as
+		// a player's connection is fully set up. Touches only that one
 		// connection.
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
 			ServerPlayer player = handler.getPlayer();
-			SidebarManager.showSidebar(player, List.of(
-				"Hello " + player.getGameProfile().name(),
-				"Milestone 4",
-				"Packet Sidebar"
-			));
+			SidebarManager.showSidebar(player, SidebarContentBuilder.buildSidebarLines(player));
 		});
 	}
 }
