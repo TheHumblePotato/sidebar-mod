@@ -23,13 +23,23 @@ import java.util.concurrent.ConcurrentHashMap;
  * server.getScoreboard(), Scoreboard#setDisplayObjective, or
  * playerManager.broadcast(). The sidebar is client-side only.
  *
+ * Renders a SidebarContent (title + ordered Component lines) rather than
+ * raw text, so any formatting SidebarContentBuilder attaches to a line
+ * (team colors, etc.) reaches the client unchanged. The title is no
+ * longer hardcoded here -- it comes from SidebarContent, so a different
+ * caller could show a differently-titled sidebar without touching this
+ * class.
+ *
  * Each line is shown using a stable, internal fake score holder
- * ("line_0", "line_1", ...) whose visible text is set through
- * ClientboundSetScorePacket's own display-Component field, not through
- * the holder name itself. That keeps a line's identity (its holder)
- * stable even if its displayed text changes on a future update -- which
- * matters once Milestone 9 adds diffing, since diffing needs a stable
- * key to compare against, not the text itself.
+ * ("line_0", "line_1", ...) derived purely from the line's position in
+ * the list, never from its text. That's what keeps two blank lines (or
+ * any other duplicate line) from colliding: Minecraft requires every
+ * score holder in an objective to be unique, but "line_2" and "line_4"
+ * are unique regardless of whether their displayed Components happen to
+ * both be empty. It also keeps a line's identity stable even if its text
+ * changes on a future update -- which matters once Milestone 9 adds
+ * diffing, since diffing needs a stable key to compare against, not the
+ * text itself.
  *
  * As of 26.2, ClientboundSetObjectivePacket and
  * ClientboundSetDisplayObjectivePacket both take a real Objective
@@ -41,7 +51,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class SidebarManager {
 
 	private static final String OBJECTIVE_NAME = "lmssmp_sidebar";
-	private static final String TITLE = "LMSSMP";
 	private static final String LINE_HOLDER_PREFIX = "line_";
 
 	private static final Scoreboard SCRATCH_SCOREBOARD = new Scoreboard();
@@ -65,25 +74,26 @@ public final class SidebarManager {
 	}
 
 	/**
-	 * Shows (or replaces) a player's sidebar with the given lines, listed
-	 * top to bottom. Rebuilds the objective from scratch every call --
-	 * simple and always correct, at the cost of a small amount of extra
-	 * traffic. Milestone 9 will replace this with diff-based updates that
-	 * only re-send lines that actually changed.
+	 * Shows (or replaces) a player's sidebar with the given content.
+	 * Rebuilds the objective from scratch every call -- simple and always
+	 * correct, at the cost of a small amount of extra traffic. Milestone 9
+	 * will replace this with diff-based updates that only re-send lines
+	 * that actually changed.
 	 */
-	public static void showSidebar(ServerPlayer player, List<String> lines) {
+	public static void showSidebar(ServerPlayer player, SidebarContent content) {
 		removeObjective(player);
 
 		player.connection.send(new ClientboundSetObjectivePacket(
-				buildObjective(Component.literal(TITLE)),
+				buildObjective(content.title()),
 				ClientboundSetObjectivePacket.METHOD_ADD
 		));
 
 		player.connection.send(new ClientboundSetDisplayObjectivePacket(
 				DisplaySlot.SIDEBAR,
-				buildObjective(Component.literal(TITLE))
+				buildObjective(content.title())
 		));
 
+		List<Component> lines = content.lines();
 		for (int i = 0; i < lines.size(); i++) {
 			String holder = LINE_HOLDER_PREFIX + i;
 			// Higher score sorts higher in the vanilla sidebar, so the
@@ -94,7 +104,7 @@ public final class SidebarManager {
 					holder,
 					OBJECTIVE_NAME,
 					score,
-					Optional.of(Component.literal(lines.get(i))),
+					Optional.of(lines.get(i)),
 					Optional.empty()
 			));
 		}

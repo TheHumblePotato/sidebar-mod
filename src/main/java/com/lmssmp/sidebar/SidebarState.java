@@ -1,5 +1,7 @@
 package com.lmssmp.sidebar;
 
+import net.minecraft.network.chat.Component;
+
 import java.util.List;
 
 /**
@@ -13,13 +15,13 @@ import java.util.List;
  */
 final class SidebarState {
 
-	private List<String> lines = List.of();
+	private List<Component> lines = List.of();
 
-	List<String> lines() {
+	List<Component> lines() {
 		return lines;
 	}
 
-	void setLines(List<String> lines) {
+	void setLines(List<Component> lines) {
 		this.lines = lines;
 	}
 

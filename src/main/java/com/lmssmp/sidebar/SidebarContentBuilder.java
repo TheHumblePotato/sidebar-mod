@@ -1,5 +1,6 @@
 package com.lmssmp.sidebar;
 
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.scores.Objective;
@@ -11,9 +12,9 @@ import java.util.List;
 
 /**
  * Reads existing Minecraft scoreboard state -- owned and populated by the
- * datapack -- and turns it into sidebar text. This class only reads data:
- * it never creates an objective, never assigns a team, and never touches
- * packet-sending code (that stays in SidebarManager).
+ * datapack -- and turns it into a SidebarContent. This class only reads
+ * data: it never creates an objective, never assigns a team, and never
+ * touches packet-sending code (that stays in SidebarManager).
  *
  * This is the only class allowed to call MinecraftServer#getScoreboard(),
  * and it only ever calls read-only methods on the result (getObjective,
@@ -28,26 +29,28 @@ public final class SidebarContentBuilder {
 	/** Datapack-owned objective this milestone reads from. */
 	private static final String SCORE_OBJECTIVE_NAME = "score";
 
-	/** Shown when a player has no vanilla scoreboard team. */
-	private static final String NO_TEAM_LABEL = "None";
+	private static final Component TITLE = Component.literal("LMSSMP");
+	private static final Component NO_TEAM_LABEL = Component.literal("None");
 
 	private SidebarContentBuilder() {
 	}
 
 	/**
-	 * Milestone 6: the full sidebar layout. Score is real data; team is
-	 * real data if the player has one; capture points are still a
-	 * placeholder pending Milestone 8.
+	 * Milestone 7: the full sidebar layout as real Components. Score and
+	 * team are real data (team formatting preserved); capture points are
+	 * still a placeholder pending Milestone 8.
 	 */
-	public static List<String> buildSidebarLines(ServerPlayer player) {
-		return List.of(
-				"Score: " + readScore(player, SCORE_OBJECTIVE_NAME),
-				"",
-				"Your team: " + readTeamName(player),
-				"",
-				"Capture Points:",
-				"(Not implemented)"
+	public static SidebarContent buildSidebarContent(ServerPlayer player) {
+		List<Component> lines = List.of(
+				Component.literal("Score: " + readScore(player, SCORE_OBJECTIVE_NAME)),
+				Component.empty(),
+				Component.literal("Your team: ").append(readTeamDisplayName(player)),
+				Component.empty(),
+				Component.literal("Capture Points:"),
+				Component.literal("(Not implemented)")
 		);
+
+		return new SidebarContent(TITLE, lines);
 	}
 
 	/** Reads a player's value for an existing objective, or 0 if either is absent. */
@@ -68,13 +71,18 @@ public final class SidebarContentBuilder {
 	}
 
 	/**
-	 * Entity#getTeam() is a read-only accessor onto the same vanilla team
-	 * assignment the datapack manages with /team commands -- it never
-	 * creates or assigns a team, it only reports whichever one (if any)
-	 * the player is already on.
+	 * This version's Team has no separate "display name" -- getFormattedName()
+	 * is the closest equivalent: it wraps the given Component with the
+	 * team's own prefix/suffix/color, all read straight from Minecraft's
+	 * Team object rather than assigned by this mod. Entity#getTeam() is
+	 * read-only: it reports whichever team (if any) the player is already
+	 * on via /team, it never creates or joins one.
 	 */
-	private static String readTeamName(ServerPlayer player) {
+	private static Component readTeamDisplayName(ServerPlayer player) {
 		Team team = player.getTeam();
-		return team != null ? team.getName() : NO_TEAM_LABEL;
+		if (team == null) {
+			return NO_TEAM_LABEL;
+		}
+		return team.getFormattedName(Component.literal(team.getName()));
 	}
 }

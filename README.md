@@ -51,39 +51,50 @@ gradle wrapper --gradle-version 9.6.1
       online player's current lines as scaffolding for Milestone 9's
       diff-based updates. Still only tested with the same content as
       Milestone 3.
+- [x] Milestone 5 — first real content reader: `SidebarContentBuilder`
+      reads the datapack-owned `"score"` objective for a player via
+      `Scoreboard#getObjective` / `Scoreboard#getPlayerScoreInfo` (read-only
+      calls to the *real* server scoreboard -- a separate instance from
+      `SidebarManager`'s private scratch scoreboard) and returns
+      `["Score: <value>"]`, or `["Score: 0"]` if the objective or the
+      player's entry doesn't exist yet.
 - [x] Milestone 6 — full sidebar layout: `SidebarContentBuilder` now
       returns `Score: <n>`, a blank line, `Your team: <name|None>`
       (via `Entity#getTeam()`, a read-only accessor onto the same team
       assignment `/team` commands manage), a blank line, and a
       `Capture Points:` / `(Not implemented)` placeholder pair.
       `SidebarManager` untouched.
-- [ ] Milestone 7 — leaderboard
+- [x] Milestone 7 — richer content model + formatted team name. New
+      `SidebarContent(Component title, List<Component> lines)` record
+      replaces the raw `List<String>` pipeline. `SidebarManager` now
+      renders `SidebarContent` and no longer hardcodes the title.
+      `SidebarContentBuilder` reads the team's own `getDisplayName()`
+      Component and applies its `getColor()` style, so team formatting
+      (from `/team modify`) reaches the client unchanged. Blank spacer
+      lines were already collision-safe from Milestone 4's holder design
+      (`line_<index>`, never based on content) -- no change needed there.
 - [ ] Milestone 8 — dynamic control points (tagged armor stands)
 - [ ] Milestone 9 — diff-based caching / update optimization
 - [ ] Milestone 10 — `config/lmssmp-sidebar.json`
 - [ ] Milestone 11 — testing and cleanup
 
-Each milestone is a separate change; nothing after Milestone 6 has been
+Each milestone is a separate change; nothing after Milestone 7 has been
 implemented yet.
 
-### Testing Milestone 6
+### Testing Milestone 7
 
 1. `./gradlew build` and run a dedicated 26.2 server with the built jar.
-2. With no team and no score set, join and confirm:
-   ```
-   LMSSMP
-   Score: 0
+2. `/team add red "Red"`, `/team modify red color red`, `/team join red <name>`.
+3. Rejoin (join hook only fires on connect) and confirm the sidebar shows
+   `Your team: Red` with the text colored red, not the raw internal team
+   id `red`.
+4. Try a team with a bold/italic display name (`/team modify red displayName`
+   with a styled JSON text component, if your command syntax supports it)
+   and confirm that styling also survives.
+5. Confirm the two blank spacer lines still render as two separate blank
+   rows, not collapsed into one.
 
-   Your team: None
-
-   Capture Points:
-   (Not implemented)
-   ```
-3. Run `/team add red`, `/team join red <name>`, set a score, then
-   rejoin (join hook only fires on connect) and confirm `Your team: red`
-   and the real score both show.
-
-**Note:** `readTeamName`'s use of `Entity#getTeam()` has not been checked
-against 26.2 decompiled sources directly -- it's a long-stable accessor
-across many past versions, but if `./gradlew build` errors here, it's
-the first thing to check with F12.
+**Note:** `Team#getDisplayName()` and `Team#getColor()` have not been
+checked against 26.2 decompiled sources directly -- long-stable APIs,
+but the first thing to check with F12 if `./gradlew build` errors on
+`readTeamDisplayName`.
