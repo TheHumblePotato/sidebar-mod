@@ -37,11 +37,16 @@ import java.util.concurrent.ConcurrentHashMap;
  * ("line_0", "line_1", ...) derived purely from the line's position in
  * the list, never from its text -- unchanged since Milestone 4, and the
  * reason line-level diffing is possible at all: a line's identity never
- * shifts just because its text did. Line scores are computed as
- * SCORE_BASE - index rather than lines.size() - index, so a line's score
- * (and therefore its packet) never needs to change just because the
- * sidebar grew or shrank elsewhere -- only lines whose Component
- * actually changed get sent.
+ * shifts just because its text did.
+ *
+ * Milestone 14: line scores are no longer a fixed SCORE_BASE - index.
+ * They're now (totalVisibleLines - index), so the client shows a plain
+ * descending count (e.g. 6, 5, 4 ... 1) instead of arbitrary numbers
+ * like 1000/999/998. Because the number now depends on the *total* line
+ * count and not just each line's own text, updateSidebar must resend
+ * every surviving line -- even ones whose text didn't change -- when
+ * the line count itself changes; when the count is stable, the old
+ * text-only diff still applies and unchanged lines are skipped.
  *
  * As of 26.2, ClientboundSetObjectivePacket and
  * ClientboundSetDisplayObjectivePacket both take a real Objective
@@ -54,14 +59,6 @@ public final class SidebarManager {
 
 	private static final String OBJECTIVE_NAME = "lmssmp_sidebar";
 	private static final String LINE_HOLDER_PREFIX = "line_";
-
-	/**
-	 * Base value line_0's score is computed from; each later line gets
-	 * one less. Comfortably above any realistic sidebar length, and
-	 * deliberately independent of the current line count -- see class
-	 * javadoc.
-	 */
-	private static final int SCORE_BASE = 1000;
 
 	private static final Scoreboard SCRATCH_SCOREBOARD = new Scoreboard();
 
@@ -106,8 +103,9 @@ public final class SidebarManager {
 		));
 
 		List<Component> lines = content.lines();
-		for (int i = 0; i < lines.size(); i++) {
-			sendLine(player, i, lines.get(i));
+		int total = lines.size();
+		for (int i = 0; i < total; i++) {
+			sendLine(player, i, lines.get(i), total);
 		}
 
 		STATES.computeIfAbsent(player.getUUID(), id -> new SidebarState())
@@ -121,11 +119,13 @@ public final class SidebarManager {
 	 * the client already knows it, so there's nothing for the client to
 	 * lose or briefly stop seeing.
 	 *
-	 * Lines are compared by position: if oldContent and newContent have
-	 * the same (equal) Component at index i, nothing is sent for that
-	 * line. If they differ and newContent has a line there, one
-	 * ClientboundSetScorePacket is sent for it. If newContent has fewer
-	 * lines than oldContent, the now-missing positions get a
+	 * Lines are compared by position. If the total line count is
+	 * unchanged, a line is only resent when its Component actually
+	 * differs -- same behavior as before Milestone 14. If the total line
+	 * count *changed*, every surviving line's displayed number shifts
+	 * (since it's derived from totalLines - index), so every surviving
+	 * line is resent regardless of whether its text changed, to keep the
+	 * displayed numbers correct. Lines that no longer exist get a
 	 * ClientboundResetScorePacket, which deletes a single score holder
 	 * from an objective without touching any other line. A changed title
 	 * uses ClientboundSetObjectivePacket's METHOD_CHANGE, which updates
@@ -141,24 +141,29 @@ public final class SidebarManager {
 
 		List<Component> oldLines = oldContent.lines();
 		List<Component> newLines = newContent.lines();
-		int maxSize = Math.max(oldLines.size(), newLines.size());
+		int oldTotal = oldLines.size();
+		int newTotal = newLines.size();
+		int maxSize = Math.max(oldTotal, newTotal);
+
+		boolean countChanged = oldTotal != newTotal;
 
 		for (int i = 0; i < maxSize; i++) {
-			Component oldLine = i < oldLines.size() ? oldLines.get(i) : null;
-			Component newLine = i < newLines.size() ? newLines.get(i) : null;
-
-			if (Objects.equals(oldLine, newLine)) {
-				continue;
-			}
+			Component oldLine = i < oldTotal ? oldLines.get(i) : null;
+			Component newLine = i < newTotal ? newLines.get(i) : null;
 
 			if (newLine == null) {
 				player.connection.send(new ClientboundResetScorePacket(
 						LINE_HOLDER_PREFIX + i,
 						OBJECTIVE_NAME
 				));
-			} else {
-				sendLine(player, i, newLine);
+				continue;
 			}
+
+			if (!countChanged && Objects.equals(oldLine, newLine)) {
+				continue;
+			}
+
+			sendLine(player, i, newLine, newTotal);
 		}
 
 		STATES.computeIfAbsent(player.getUUID(), id -> new SidebarState())
@@ -174,11 +179,15 @@ public final class SidebarManager {
 		STATES.remove(player.getUUID());
 	}
 
-	private static void sendLine(ServerPlayer player, int index, Component line) {
+	/**
+	 * totalLines - index gives a plain descending count (e.g. 6,5,4...1)
+	 * instead of the old fixed SCORE_BASE - index scheme.
+	 */
+	private static void sendLine(ServerPlayer player, int index, Component line, int totalLines) {
 		player.connection.send(new ClientboundSetScorePacket(
 				LINE_HOLDER_PREFIX + index,
 				OBJECTIVE_NAME,
-				SCORE_BASE - index,
+				totalLines - index,
 				Optional.of(line),
 				Optional.empty()
 		));

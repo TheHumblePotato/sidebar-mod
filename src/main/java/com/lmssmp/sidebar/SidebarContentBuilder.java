@@ -5,6 +5,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.scores.Objective;
 import net.minecraft.world.scores.ReadOnlyScoreInfo;
+import net.minecraft.world.scores.ScoreHolder;
 import net.minecraft.world.scores.Scoreboard;
 import net.minecraft.world.scores.PlayerTeam;
 
@@ -26,15 +27,24 @@ import java.util.Optional;
  * SCRATCH_SCOREBOARD, which is never shared with the server and never
  * read from.
  *
- * Milestone 13: content generation is now split by SidebarMode
+ * Milestone 13: content generation is split by SidebarMode
  * (buildEvents/buildLeaderboard/buildMini), chosen per player via a
  * swappable SidebarModeProvider -- same injection style as
  * CapturePointProvider. buildSidebarContent returns Optional.empty()
  * for HIDDEN rather than an "empty" SidebarContent, so the caller can
  * tell "nothing to show" apart from "a sidebar with few/no lines" and
- * react accordingly (see SidebarMod, which uses SidebarManager's
- * existing removeSidebar() for that case -- no packet architecture
- * changed here).
+ * react accordingly.
+ *
+ * Milestone 14: every visible layout now shares one "Your Team: <name>"
+ * line via teamLine(), instead of only EVENTS having it. buildLeaderboard
+ * no longer returns hardcoded zeros -- it reads real per-team totals via
+ * the new readNamedScore helper, which looks up a plain-string
+ * scoreboard holder (e.g. "Red") the same way readScore looks up a
+ * player. ASSUMPTION: team totals live on the same "score" objective,
+ * keyed by team name as the holder (e.g.
+ * `/scoreboard players add Red score 118`). If the datapack stores
+ * these differently, only SCORE_OBJECTIVE_NAME / the four holder names
+ * in buildLeaderboard need to change.
  */
 public final class SidebarContentBuilder {
 
@@ -97,12 +107,12 @@ public final class SidebarContentBuilder {
 		};
 	}
 
-	/** The original (Milestone 8-12) layout: score, team, capture points. Unchanged content, just relocated. */
+	/** The original (Milestone 8-12) layout: score, team, capture points. */
 	private static SidebarContent buildEvents(ServerPlayer player) {
 		List<Component> lines = new ArrayList<>();
 		lines.add(Component.literal("Score: " + readScore(player, SCORE_OBJECTIVE_NAME)));
 		lines.add(Component.empty());
-		lines.add(Component.literal("Your team: ").append(readTeamDisplayName(player)));
+		lines.add(teamLine(player));
 		lines.add(Component.empty());
 		lines.add(Component.literal("Capture Points:"));
 		lines.addAll(capturePointLines(capturePointProvider.getCapturePoints(player)));
@@ -110,25 +120,32 @@ public final class SidebarContentBuilder {
 		return new SidebarContent(TITLE, List.copyOf(lines));
 	}
 
-	/** Milestone 13 placeholder: static zeroed team totals, no real leaderboard data yet. */
+	/**
+	 * Milestone 14: now reads real per-team totals via readNamedScore
+	 * instead of the old Milestone 13 hardcoded zeros. Also gained the
+	 * shared team line.
+	 */
 	private static SidebarContent buildLeaderboard(ServerPlayer player) {
 		List<Component> lines = List.of(
 				Component.literal("Score: " + readScore(player, SCORE_OBJECTIVE_NAME)),
 				Component.empty(),
+				teamLine(player),
+				Component.empty(),
 				Component.literal("Leaderboard:"),
-				Component.literal("Red: 0"),
-				Component.literal("Yellow: 0"),
-				Component.literal("Green: 0"),
-				Component.literal("Blue: 0")
+				Component.literal("Red: " + readNamedScore(player, SCORE_OBJECTIVE_NAME, "Red")),
+				Component.literal("Yellow: " + readNamedScore(player, SCORE_OBJECTIVE_NAME, "Yellow")),
+				Component.literal("Green: " + readNamedScore(player, SCORE_OBJECTIVE_NAME, "Green")),
+				Component.literal("Blue: " + readNamedScore(player, SCORE_OBJECTIVE_NAME, "Blue"))
 		);
 
 		return new SidebarContent(TITLE, lines);
 	}
 
-	/** Milestone 13: just the score, for a compact sidebar. */
+	/** Milestone 14: mini mode now also shows the player's team. */
 	private static SidebarContent buildMini(ServerPlayer player) {
 		List<Component> lines = List.of(
-				Component.literal("Score: " + readScore(player, SCORE_OBJECTIVE_NAME))
+				Component.literal("Score: " + readScore(player, SCORE_OBJECTIVE_NAME)),
+				teamLine(player)
 		);
 
 		return new SidebarContent(TITLE, lines);
@@ -149,6 +166,38 @@ public final class SidebarContentBuilder {
 		}
 
 		return info.value();
+	}
+
+	/**
+	 * Reads a plain-string scoreboard holder's value (e.g. a team's
+	 * fake-player entry such as "Red") for an existing objective, or 0 if
+	 * either is absent. Same read-only semantics as readScore, but for a
+	 * holder name that isn't a real player -- this is what fixes the
+	 * Milestone 13 leaderboard bug, where team totals were never read at
+	 * all and instead hardcoded to 0.
+	 */
+	private static int readNamedScore(ServerPlayer player, String objectiveName, String holderName) {
+		Scoreboard scoreboard = ((ServerLevel) player.level()).getServer().getScoreboard();
+
+		Objective objective = scoreboard.getObjective(objectiveName);
+		if (objective == null) {
+			return 0;
+		}
+
+		ReadOnlyScoreInfo info = scoreboard.getPlayerScoreInfo(ScoreHolder.forNameOnly(holderName), objective);
+		if (info == null) {
+			return 0;
+		}
+
+		return info.value();
+	}
+
+	/**
+	 * "Your Team: <name>" line, shared by every visible layout as of
+	 * Milestone 14 so the read/format logic only lives in one place.
+	 */
+	private static Component teamLine(ServerPlayer player) {
+		return Component.literal("Your Team: ").append(readTeamDisplayName(player));
 	}
 
 	/**

@@ -11,14 +11,21 @@ import org.slf4j.LoggerFactory;
 import java.util.Optional;
 
 /**
- * Milestone 13: SidebarContentBuilder now returns Optional<SidebarContent>
- * -- empty when the player's current SidebarMode is HIDDEN. This class is
- * where that Optional gets resolved into an actual SidebarManager call:
- * present -> create/update as before; empty -> removeSidebar() if the
- * player currently has a sidebar showing, otherwise nothing at all (an
- * already-hidden player has nothing to remove). SidebarManager itself
- * still has no idea modes exist -- it only ever receives a concrete
- * SidebarContent or a removeSidebar() call, exactly as before.
+ * Milestone 13: SidebarContentBuilder returns Optional<SidebarContent>
+ * -- empty when the player's current SidebarMode is HIDDEN. This class
+ * resolves that Optional into an actual SidebarManager call: present ->
+ * create/update as before; empty -> removeSidebar() if the player
+ * currently has a sidebar showing, otherwise nothing at all.
+ * SidebarManager itself still has no idea modes exist -- it only ever
+ * receives a concrete SidebarContent or a removeSidebar() call.
+ *
+ * Milestone 14:
+ * - REFRESH_INTERVAL_TICKS dropped from 20 to 4 (~5x/sec) for snappier
+ *   updates. This is safe because updateSidebar/getLastContent already
+ *   skip sending anything when nothing changed -- polling more often
+ *   means faster detection of real changes, not more packets.
+ * - Wires in ScoreboardSidebarModeProvider (real datapack-driven mode)
+ *   in place of PlaceholderSidebarModeProvider.
  */
 public final class SidebarMod implements ModInitializer {
 
@@ -27,14 +34,16 @@ public final class SidebarMod implements ModInitializer {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger("LMSSMP Sidebar");
 
-	/** How often (in server ticks) every online player's sidebar is checked for changes. 20 ticks ~= 1 second. */
-	private static final int REFRESH_INTERVAL_TICKS = 20;
+	/** How often (in server ticks) every online player's sidebar is checked for changes. 4 ticks ~= 5x/sec. */
+	private static final int REFRESH_INTERVAL_TICKS = 4;
 
 	private int ticksSinceLastRefresh = 0;
 
 	@Override
 	public void onInitialize() {
 		LOGGER.info("[LMSSMP Sidebar] Mod initialized successfully");
+
+		SidebarContentBuilder.setSidebarModeProvider(new ScoreboardSidebarModeProvider());
 
 		// Build the sidebar as soon as a player's connection is fully set
 		// up, so they don't wait up to a full REFRESH_INTERVAL_TICKS for

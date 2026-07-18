@@ -1,11 +1,11 @@
 package com.lmssmp.sidebar;
 
 /**
- * Which sidebar layout a player should see. Not yet driven by any real
- * datapack/config value -- see PlaceholderSidebarModeProvider -- but the
- * id mapping is defined now so a later milestone that reads a raw mode
- * value (e.g. from a scoreboard objective) has a single, safe place to
- * convert it.
+ * Which sidebar layout a player should see. As of Milestone 14 this is
+ * driven by a real datapack value via ScoreboardSidebarModeProvider,
+ * but the id mapping was defined back in Milestone 13 specifically so
+ * that later step (reading a raw mode value off a scoreboard objective)
+ * would have a single, safe place to convert it.
  */
 public enum SidebarMode {
 	HIDDEN,
