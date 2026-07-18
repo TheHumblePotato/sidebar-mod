@@ -6,7 +6,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.scores.Objective;
 import net.minecraft.world.scores.ReadOnlyScoreInfo;
 import net.minecraft.world.scores.Scoreboard;
-import net.minecraft.world.scores.Team;
+import net.minecraft.world.scores.PlayerTeam;
 
 import java.util.List;
 
@@ -71,18 +71,21 @@ public final class SidebarContentBuilder {
 	}
 
 	/**
-	 * This version's Team has no separate "display name" -- getFormattedName()
-	 * is the closest equivalent: it wraps the given Component with the
-	 * team's own prefix/suffix/color, all read straight from Minecraft's
-	 * Team object rather than assigned by this mod. Entity#getTeam() is
-	 * read-only: it reports whichever team (if any) the player is already
-	 * on via /team, it never creates or joins one.
+	 * Entity#getTeam() actually returns PlayerTeam, not the abstract Team
+	 * superclass -- getDisplayName()/getFormattedDisplayName() are only
+	 * declared on PlayerTeam, which is why typing this as Team hid them
+	 * earlier. getFormattedDisplayName() returns the team's display name
+	 * (set via /team add ... "<name>" or /team modify ... displayName)
+	 * with the team's color/formatting already applied by Minecraft --
+	 * nothing styled by this mod. getTeam() itself is read-only: it
+	 * reports whichever team (if any) the player is already on via
+	 * /team, it never creates or joins one.
 	 */
 	private static Component readTeamDisplayName(ServerPlayer player) {
-		Team team = player.getTeam();
+		PlayerTeam team = player.getTeam();
 		if (team == null) {
 			return NO_TEAM_LABEL;
 		}
-		return team.getFormattedName(Component.literal(team.getName()));
+		return team.getFormattedDisplayName();
 	}
 }
