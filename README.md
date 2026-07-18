@@ -118,21 +118,36 @@ gradle wrapper --gradle-version 9.6.1
       it calls a swappable `CapturePointProvider` (via
       `setCapturePointProvider`) and flattens whatever comes back into
       lines. `SidebarManager` untouched -- still only ever sees `Component`s.
-- [ ] Milestone 13 — `config/lmssmp-sidebar.json`
-- [ ] Milestone 14 — testing and cleanup
+- [x] Milestone 13 — sidebar mode architecture. New `SidebarMode` enum
+      (`HIDDEN`/`EVENTS`/`LEADERBOARD`/`MINI`, with `fromId(int)` mapping
+      0-3 and defaulting unknown values to `EVENTS`), `SidebarModeProvider`
+      interface, and its `PlaceholderSidebarModeProvider` default (always
+      `EVENTS`, preserving prior behavior). `SidebarContentBuilder` now
+      dispatches to `buildEvents`/`buildLeaderboard`/`buildMini` based on
+      the registered provider's answer, and returns
+      `Optional<SidebarContent>` -- empty for `HIDDEN`. `SidebarMod`
+      resolves that Optional: present -> create/update as before; empty
+      -> `SidebarManager.removeSidebar` if a sidebar was showing,
+      otherwise nothing. `SidebarManager` untouched -- still has no idea
+      modes exist.
+- [ ] Milestone 14 — `config/lmssmp-sidebar.json`
+- [ ] Milestone 15 — testing and cleanup
 
-Each milestone is a separate change; nothing after Milestone 12 has been
+Each milestone is a separate change; nothing after Milestone 13 has been
 implemented yet.
 
-### Testing Milestone 12
+### Testing Milestone 13
 
 1. `./gradlew build` and run a dedicated 26.2 server with the built jar.
-2. Join and confirm the sidebar looks identical to Milestone 11's --
-   `Alpha`/`Bravo`/`Charlie` should still appear under `Capture Points:`.
-   This milestone is purely structural; there's no visible change if it
-   worked.
-3. As a sanity check that the abstraction is real, a quick manual test:
-   temporarily call `SidebarContentBuilder.setCapturePointProvider(player ->
-   List.of(CapturePointEntry.nameOnly("Test")))` from `onInitialize()`
-   and confirm the sidebar now shows `Test` instead of the three
-   placeholders -- then remove that test call.
+2. Join and confirm the sidebar looks identical to Milestone 12's --
+   `PlaceholderSidebarModeProvider` always returns `EVENTS`, so this
+   should be a no-visible-change milestone by default.
+3. Temporarily change `PlaceholderSidebarModeProvider#getMode` to return
+   `SidebarMode.LEADERBOARD`, rebuild, rejoin, and confirm the sidebar
+   shows the `Leaderboard:` layout with `Red`/`Yellow`/`Green`/`Blue: 0`.
+4. Change it to `SidebarMode.MINI` and confirm the sidebar shrinks to
+   just `LMSSMP` / `Score: <n>`.
+5. Change it to `SidebarMode.HIDDEN` and confirm the sidebar disappears
+   from the client entirely (not an empty box -- gone).
+6. Revert `PlaceholderSidebarModeProvider` back to `EVENTS` when done
+   testing.

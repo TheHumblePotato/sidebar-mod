@@ -10,6 +10,7 @@ import net.minecraft.world.scores.PlayerTeam;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Reads existing Minecraft scoreboard state -- owned and populated by the
@@ -24,6 +25,16 @@ import java.util.List;
  * different Scoreboard instance entirely from SidebarManager's private
  * SCRATCH_SCOREBOARD, which is never shared with the server and never
  * read from.
+ *
+ * Milestone 13: content generation is now split by SidebarMode
+ * (buildEvents/buildLeaderboard/buildMini), chosen per player via a
+ * swappable SidebarModeProvider -- same injection style as
+ * CapturePointProvider. buildSidebarContent returns Optional.empty()
+ * for HIDDEN rather than an "empty" SidebarContent, so the caller can
+ * tell "nothing to show" apart from "a sidebar with few/no lines" and
+ * react accordingly (see SidebarMod, which uses SidebarManager's
+ * existing removeSidebar() for that case -- no packet architecture
+ * changed here).
  */
 public final class SidebarContentBuilder {
 
@@ -40,6 +51,13 @@ public final class SidebarContentBuilder {
 	 */
 	private static CapturePointProvider capturePointProvider = new PlaceholderCapturePointProvider();
 
+	/**
+	 * Swappable so a later milestone can supply a real per-player mode
+	 * (e.g. read from datapack/config state) without this class's
+	 * mode-dispatch logic changing -- see setSidebarModeProvider.
+	 */
+	private static SidebarModeProvider sidebarModeProvider = new PlaceholderSidebarModeProvider();
+
 	private SidebarContentBuilder() {
 	}
 
@@ -53,12 +71,34 @@ public final class SidebarContentBuilder {
 	}
 
 	/**
-	 * Milestone 12: the full sidebar layout as real Components. Score and
-	 * team are real data (team formatting preserved); capture points come
-	 * from whatever CapturePointProvider is currently registered --
-	 * placeholder entries by default.
+	 * Lets a later milestone register a real SidebarModeProvider in place
+	 * of the placeholder default, without buildSidebarContent's dispatch
+	 * logic needing to change.
 	 */
-	public static SidebarContent buildSidebarContent(ServerPlayer player) {
+	public static void setSidebarModeProvider(SidebarModeProvider provider) {
+		sidebarModeProvider = provider;
+	}
+
+	/**
+	 * Builds the sidebar content for whichever mode the current
+	 * SidebarModeProvider reports for this player. Returns
+	 * Optional.empty() for HIDDEN -- there is no "empty sidebar" content
+	 * to render in that case, only an instruction for the caller to make
+	 * sure nothing is shown.
+	 */
+	public static Optional<SidebarContent> buildSidebarContent(ServerPlayer player) {
+		SidebarMode mode = sidebarModeProvider.getMode(player);
+
+		return switch (mode) {
+			case HIDDEN -> Optional.empty();
+			case EVENTS -> Optional.of(buildEvents(player));
+			case LEADERBOARD -> Optional.of(buildLeaderboard(player));
+			case MINI -> Optional.of(buildMini(player));
+		};
+	}
+
+	/** The original (Milestone 8-12) layout: score, team, capture points. Unchanged content, just relocated. */
+	private static SidebarContent buildEvents(ServerPlayer player) {
 		List<Component> lines = new ArrayList<>();
 		lines.add(Component.literal("Score: " + readScore(player, SCORE_OBJECTIVE_NAME)));
 		lines.add(Component.empty());
@@ -68,6 +108,30 @@ public final class SidebarContentBuilder {
 		lines.addAll(capturePointLines(capturePointProvider.getCapturePoints(player)));
 
 		return new SidebarContent(TITLE, List.copyOf(lines));
+	}
+
+	/** Milestone 13 placeholder: static zeroed team totals, no real leaderboard data yet. */
+	private static SidebarContent buildLeaderboard(ServerPlayer player) {
+		List<Component> lines = List.of(
+				Component.literal("Score: " + readScore(player, SCORE_OBJECTIVE_NAME)),
+				Component.empty(),
+				Component.literal("Leaderboard:"),
+				Component.literal("Red: 0"),
+				Component.literal("Yellow: 0"),
+				Component.literal("Green: 0"),
+				Component.literal("Blue: 0")
+		);
+
+		return new SidebarContent(TITLE, lines);
+	}
+
+	/** Milestone 13: just the score, for a compact sidebar. */
+	private static SidebarContent buildMini(ServerPlayer player) {
+		List<Component> lines = List.of(
+				Component.literal("Score: " + readScore(player, SCORE_OBJECTIVE_NAME))
+		);
+
+		return new SidebarContent(TITLE, lines);
 	}
 
 	/** Reads a player's value for an existing objective, or 0 if either is absent. */

@@ -8,14 +8,17 @@ import net.minecraft.server.level.ServerPlayer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Optional;
+
 /**
- * Milestone 11: the tick loop now picks between SidebarManager's
- * createSidebar (no previous content recorded for this player -- treat
- * it like a fresh join) and updateSidebar (previous content exists and
- * differs from the fresh content just built), instead of always calling
- * one always-rebuild method. The join hook always calls createSidebar,
- * since a freshly connected client has no sidebar on it yet regardless
- * of anything SidebarManager remembers server-side.
+ * Milestone 13: SidebarContentBuilder now returns Optional<SidebarContent>
+ * -- empty when the player's current SidebarMode is HIDDEN. This class is
+ * where that Optional gets resolved into an actual SidebarManager call:
+ * present -> create/update as before; empty -> removeSidebar() if the
+ * player currently has a sidebar showing, otherwise nothing at all (an
+ * already-hidden player has nothing to remove). SidebarManager itself
+ * still has no idea modes exist -- it only ever receives a concrete
+ * SidebarContent or a removeSidebar() call, exactly as before.
  */
 public final class SidebarMod implements ModInitializer {
 
@@ -37,10 +40,12 @@ public final class SidebarMod implements ModInitializer {
 		// up, so they don't wait up to a full REFRESH_INTERVAL_TICKS for
 		// their first sidebar after joining. Touches only that one
 		// connection. A fresh connection never has an existing sidebar on
-		// it, so this always creates rather than updates.
+		// it, so a present Optional always creates rather than updates;
+		// an empty one (HIDDEN) simply means nothing gets sent at all.
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
 			ServerPlayer player = handler.getPlayer();
-			SidebarManager.createSidebar(player, SidebarContentBuilder.buildSidebarContent(player));
+			SidebarContentBuilder.buildSidebarContent(player)
+					.ifPresent(content -> SidebarManager.createSidebar(player, content));
 		});
 
 		ServerTickEvents.END_SERVER_TICK.register(this::onServerTick);
@@ -54,12 +59,24 @@ public final class SidebarMod implements ModInitializer {
 		ticksSinceLastRefresh = 0;
 
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-			SidebarContent content = SidebarContentBuilder.buildSidebarContent(player);
+			Optional<SidebarContent> contentOpt = SidebarContentBuilder.buildSidebarContent(player);
 			SidebarContent previous = SidebarManager.getLastContent(player);
 			String name = player.getGameProfile().name();
 
 			// TEMP debug logging -- safe to delete once this is trusted,
 			// kept to one line per player so it's easy to grep and remove.
+			if (contentOpt.isEmpty()) {
+				if (previous != null) {
+					SidebarManager.removeSidebar(player);
+					LOGGER.info("[Sidebar] Hidden {}", name);
+				} else {
+					LOGGER.info("[Sidebar] No changes for {}", name);
+				}
+				continue;
+			}
+
+			SidebarContent content = contentOpt.get();
+
 			if (content.equals(previous)) {
 				LOGGER.info("[Sidebar] No changes for {}", name);
 				continue;
