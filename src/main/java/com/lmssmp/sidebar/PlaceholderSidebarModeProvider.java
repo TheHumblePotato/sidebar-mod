@@ -14,6 +14,6 @@ public final class PlaceholderSidebarModeProvider implements SidebarModeProvider
 
 	@Override
 	public SidebarMode getMode(ServerPlayer player) {
-		return SidebarMode.EVENTS;
+		return SidebarMode.HIDDEN;
 	}
 }
