@@ -48,7 +48,7 @@ gradle wrapper --gradle-version 9.6.1
       via `ClientboundSetScorePacket`'s display-Component field, not the
       holder name itself, so a line's identity stays stable even if its
       text changes later. `SidebarState` (package-private) tracks each
-      online player's current lines as scaffolding for Milestone 9's
+      online player's current lines as scaffolding for Milestone 10's
       diff-based updates. Still only tested with the same content as
       Milestone 3.
 - [x] Milestone 5 — first real content reader: `SidebarContentBuilder`
@@ -80,27 +80,35 @@ gradle wrapper --gradle-version 9.6.1
       and flattens them into one Component line each under
       `Capture Points:`. `SidebarContent`/`SidebarManager` untouched --
       both only ever see the final flattened `List<Component>`.
-- [ ] Milestone 9 — diff-based caching / update optimization
-- [ ] Milestone 10 — `config/lmssmp-sidebar.json`
-- [ ] Milestone 11 — testing and cleanup
+- [x] Milestone 9 — automatic refresh: `SidebarMod` now also registers
+      `ServerTickEvents.END_SERVER_TICK`, which rebuilds every online
+      player's sidebar every `REFRESH_INTERVAL_TICKS` (20, ~1 second)
+      through the same pipeline the join hook uses. Full rebuild every
+      refresh, no diffing yet -- `SidebarManager`/`SidebarContentBuilder`
+      untouched.
+- [ ] Milestone 10 — diff-based caching / update optimization
+- [ ] Milestone 11 — `config/lmssmp-sidebar.json`
+- [ ] Milestone 12 — testing and cleanup
 
-Each milestone is a separate change; nothing after Milestone 8 has been
+Each milestone is a separate change; nothing after Milestone 9 has been
 implemented yet.
 
-### Testing Milestone 8
+### Testing Milestone 9
 
 1. `./gradlew build` and run a dedicated 26.2 server with the built jar.
-2. Join and confirm the sidebar shows:
-   ```
-   LMSSMP
-   Score: <n>
+2. Join, then run `/scoreboard players set <name> score 5` while
+   already connected (don't rejoin).
+3. Within about a second, confirm the sidebar's `Score:` line updates on
+   its own -- no reconnect needed. This is the actual behavior change
+   from Milestone 8, where you had to rejoin to see any update.
+4. Watch for visible flicker: because this is a full rebuild (remove +
+   re-add the objective) every refresh, some client-side flicker is
+   expected and acceptable for this milestone -- Milestone 10 is where
+   that gets fixed via diffing.
 
-   Your team: <name|None>
-
-   Capture Points:
-   Alpha
-   Bravo
-   Charlie
-   ```
-3. `Alpha`/`Bravo`/`Charlie` are hard-coded placeholders -- they don't
-   change based on any world state yet.
+**Note:** `ServerTickEvents.END_SERVER_TICK` and
+`MinecraftServer#getPlayerList().getPlayers()` haven't been checked
+against 26.2 decompiled sources directly -- both are long-stable,
+widely-used APIs (Fabric's own tick event, and vanilla's player list
+accessor), but the first things to check with F12 if `./gradlew build`
+errors in `SidebarMod`.
