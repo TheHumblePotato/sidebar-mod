@@ -132,10 +132,10 @@ public final class SidebarContentBuilder {
 				teamLine(player),
 				Component.empty(),
 				Component.literal("Leaderboard:"),
-				Component.literal("Red: " + readNamedScore(player, SCORE_OBJECTIVE_NAME, "Red")),
-				Component.literal("Yellow: " + readNamedScore(player, SCORE_OBJECTIVE_NAME, "Yellow")),
-				Component.literal("Green: " + readNamedScore(player, SCORE_OBJECTIVE_NAME, "Green")),
-				Component.literal("Blue: " + readNamedScore(player, SCORE_OBJECTIVE_NAME, "Blue"))
+				Component.literal("Red: " + readNamedScore(player, SCORE_OBJECTIVE_NAME, "team1")),
+				Component.literal("Yellow: " + readNamedScore(player, SCORE_OBJECTIVE_NAME, "team2")),
+				Component.literal("Green: " + readNamedScore(player, SCORE_OBJECTIVE_NAME, "team3")),
+				Component.literal("Blue: " + readNamedScore(player, SCORE_OBJECTIVE_NAME, "team4"))
 		);
 
 		return new SidebarContent(TITLE, lines);
