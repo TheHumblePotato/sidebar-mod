@@ -8,6 +8,7 @@ import net.minecraft.world.scores.ReadOnlyScoreInfo;
 import net.minecraft.world.scores.Scoreboard;
 import net.minecraft.world.scores.PlayerTeam;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -36,21 +37,21 @@ public final class SidebarContentBuilder {
 	}
 
 	/**
-	 * Milestone 7: the full sidebar layout as real Components. Score and
+	 * Milestone 8: the full sidebar layout as real Components. Score and
 	 * team are real data (team formatting preserved); capture points are
-	 * still a placeholder pending Milestone 8.
+	 * still placeholder entries pending a later milestone reading real
+	 * armor stand data.
 	 */
 	public static SidebarContent buildSidebarContent(ServerPlayer player) {
-		List<Component> lines = List.of(
-				Component.literal("Score: " + readScore(player, SCORE_OBJECTIVE_NAME)),
-				Component.empty(),
-				Component.literal("Your team: ").append(readTeamDisplayName(player)),
-				Component.empty(),
-				Component.literal("Capture Points:"),
-				Component.literal("(Not implemented)")
-		);
+		List<Component> lines = new ArrayList<>();
+		lines.add(Component.literal("Score: " + readScore(player, SCORE_OBJECTIVE_NAME)));
+		lines.add(Component.empty());
+		lines.add(Component.literal("Your team: ").append(readTeamDisplayName(player)));
+		lines.add(Component.empty());
+		lines.add(Component.literal("Capture Points:"));
+		lines.addAll(capturePointLines(readCapturePoints(player)));
 
-		return new SidebarContent(TITLE, lines);
+		return new SidebarContent(TITLE, List.copyOf(lines));
 	}
 
 	/** Reads a player's value for an existing objective, or 0 if either is absent. */
@@ -87,5 +88,28 @@ public final class SidebarContentBuilder {
 			return NO_TEAM_LABEL;
 		}
 		return team.getFormattedDisplayName();
+	}
+
+	/**
+	 * Milestone 8: hard-coded placeholder entries. A later milestone will
+	 * replace this method's body with real reads of tagged armor stands
+	 * (control_point / cp_order / cp_owner / cp_state) -- nothing else in
+	 * this class, and nothing in SidebarManager, needs to change when
+	 * that happens, since both only ever see the resulting Component
+	 * lines below.
+	 */
+	private static List<CapturePointEntry> readCapturePoints(ServerPlayer player) {
+		return List.of(
+				new CapturePointEntry("Alpha"),
+				new CapturePointEntry("Bravo"),
+				new CapturePointEntry("Charlie")
+		);
+	}
+
+	/** Converts capture point entries into one sidebar line per entry, in order. */
+	private static List<Component> capturePointLines(List<CapturePointEntry> capturePoints) {
+		return capturePoints.stream()
+				.map(entry -> (Component) Component.literal(entry.name()))
+				.toList();
 	}
 }

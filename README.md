@@ -73,28 +73,34 @@ gradle wrapper --gradle-version 9.6.1
       (from `/team modify`) reaches the client unchanged. Blank spacer
       lines were already collision-safe from Milestone 4's holder design
       (`line_<index>`, never based on content) -- no change needed there.
-- [ ] Milestone 8 — dynamic control points (tagged armor stands)
+- [x] Milestone 8 — capture point section framework. New
+      `CapturePointEntry(String name)` record (owner/progress deliberately
+      left unmodeled until a milestone actually reads them). `SidebarContentBuilder`
+      generates three hard-coded placeholder entries (`Alpha`/`Bravo`/`Charlie`)
+      and flattens them into one Component line each under
+      `Capture Points:`. `SidebarContent`/`SidebarManager` untouched --
+      both only ever see the final flattened `List<Component>`.
 - [ ] Milestone 9 — diff-based caching / update optimization
 - [ ] Milestone 10 — `config/lmssmp-sidebar.json`
 - [ ] Milestone 11 — testing and cleanup
 
-Each milestone is a separate change; nothing after Milestone 7 has been
+Each milestone is a separate change; nothing after Milestone 8 has been
 implemented yet.
 
-### Testing Milestone 7
+### Testing Milestone 8
 
 1. `./gradlew build` and run a dedicated 26.2 server with the built jar.
-2. `/team add red "Red"`, `/team modify red color red`, `/team join red <name>`.
-3. Rejoin (join hook only fires on connect) and confirm the sidebar shows
-   `Your team: Red` with the text colored red, not the raw internal team
-   id `red`.
-4. Try a team with a bold/italic display name (`/team modify red displayName`
-   with a styled JSON text component, if your command syntax supports it)
-   and confirm that styling also survives.
-5. Confirm the two blank spacer lines still render as two separate blank
-   rows, not collapsed into one.
+2. Join and confirm the sidebar shows:
+   ```
+   LMSSMP
+   Score: <n>
 
-**Note:** `Team#getDisplayName()` and `Team#getColor()` have not been
-checked against 26.2 decompiled sources directly -- long-stable APIs,
-but the first thing to check with F12 if `./gradlew build` errors on
-`readTeamDisplayName`.
+   Your team: <name|None>
+
+   Capture Points:
+   Alpha
+   Bravo
+   Charlie
+   ```
+3. `Alpha`/`Bravo`/`Charlie` are hard-coded placeholders -- they don't
+   change based on any world state yet.
