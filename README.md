@@ -108,30 +108,31 @@ gradle wrapper --gradle-version 9.6.1
       `METHOD_CHANGE` rather than remove+recreate. `SidebarMod`'s tick
       loop now picks `createSidebar` vs `updateSidebar` based on whether
       `getLastContent` returns anything.
-- [ ] Milestone 12 — `config/lmssmp-sidebar.json`
-- [ ] Milestone 13 — testing and cleanup
+- [x] Milestone 12 — capture point data provider abstraction. New
+      `CapturePointProvider` interface (`getCapturePoints(ServerPlayer)`)
+      and its default `PlaceholderCapturePointProvider` implementation,
+      still returning `Alpha`/`Bravo`/`Charlie`. `CapturePointEntry`
+      expanded to `(String name, Optional<String> owner, Optional<Integer> progress)`
+      -- owner/progress unused, always empty, for now.
+      `SidebarContentBuilder` no longer builds placeholder entries itself;
+      it calls a swappable `CapturePointProvider` (via
+      `setCapturePointProvider`) and flattens whatever comes back into
+      lines. `SidebarManager` untouched -- still only ever sees `Component`s.
+- [ ] Milestone 13 — `config/lmssmp-sidebar.json`
+- [ ] Milestone 14 — testing and cleanup
 
-Each milestone is a separate change; nothing after Milestone 11 has been
+Each milestone is a separate change; nothing after Milestone 12 has been
 implemented yet.
 
-### Testing Milestone 11
+### Testing Milestone 12
 
 1. `./gradlew build` and run a dedicated 26.2 server with the built jar.
-2. Join and confirm the sidebar appears normally (this still goes
-   through `createSidebar`, unchanged from before).
-3. Run `/scoreboard players set <name> score 5`. Within a second, confirm
-   the `Score:` line updates -- and this time, watch closely: the rest of
-   the sidebar (title, team line, capture points) should **not** flicker
-   or blink, only the score line's number should change in place.
-4. Change teams (`/team join <other> <name>`) and confirm just the
-   `Your team:` line updates without a full-sidebar flicker.
-5. The debug logging is still temporary (marked `TEMP` in
-   `SidebarMod.java`) -- delete the two `LOGGER.info(...)` calls once
-   this is trusted.
-
-**Note:** `ClientboundResetScorePacket(String owner, String objectiveName)`
-and `ClientboundSetObjectivePacket`'s `METHOD_CHANGE` behavior were
-verified against real 1.21.4 decompiled sources (a public mappings
-browser), not 26.2 sources directly -- the packet's structure has been
-completely stable across many versions, but the first thing to check
-with F12 if `./gradlew build` errors in `updateSidebar`.
+2. Join and confirm the sidebar looks identical to Milestone 11's --
+   `Alpha`/`Bravo`/`Charlie` should still appear under `Capture Points:`.
+   This milestone is purely structural; there's no visible change if it
+   worked.
+3. As a sanity check that the abstraction is real, a quick manual test:
+   temporarily call `SidebarContentBuilder.setCapturePointProvider(player ->
+   List.of(CapturePointEntry.nameOnly("Test")))` from `onInitialize()`
+   and confirm the sidebar now shows `Test` instead of the three
+   placeholders -- then remove that test call.

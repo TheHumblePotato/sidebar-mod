@@ -33,14 +33,30 @@ public final class SidebarContentBuilder {
 	private static final Component TITLE = Component.literal("LMSSMP");
 	private static final Component NO_TEAM_LABEL = Component.literal("None");
 
+	/**
+	 * Swappable so a later milestone can supply real capture point data
+	 * (e.g. a provider that scans tagged armor stands) without this class
+	 * otherwise changing -- see setCapturePointProvider.
+	 */
+	private static CapturePointProvider capturePointProvider = new PlaceholderCapturePointProvider();
+
 	private SidebarContentBuilder() {
 	}
 
 	/**
-	 * Milestone 8: the full sidebar layout as real Components. Score and
-	 * team are real data (team formatting preserved); capture points are
-	 * still placeholder entries pending a later milestone reading real
-	 * armor stand data.
+	 * Lets a later milestone register a real CapturePointProvider (e.g.
+	 * one backed by tagged armor stands) in place of the placeholder
+	 * default, without any other method here needing to change.
+	 */
+	public static void setCapturePointProvider(CapturePointProvider provider) {
+		capturePointProvider = provider;
+	}
+
+	/**
+	 * Milestone 12: the full sidebar layout as real Components. Score and
+	 * team are real data (team formatting preserved); capture points come
+	 * from whatever CapturePointProvider is currently registered --
+	 * placeholder entries by default.
 	 */
 	public static SidebarContent buildSidebarContent(ServerPlayer player) {
 		List<Component> lines = new ArrayList<>();
@@ -49,7 +65,7 @@ public final class SidebarContentBuilder {
 		lines.add(Component.literal("Your team: ").append(readTeamDisplayName(player)));
 		lines.add(Component.empty());
 		lines.add(Component.literal("Capture Points:"));
-		lines.addAll(capturePointLines(readCapturePoints(player)));
+		lines.addAll(capturePointLines(capturePointProvider.getCapturePoints(player)));
 
 		return new SidebarContent(TITLE, List.copyOf(lines));
 	}
@@ -91,22 +107,10 @@ public final class SidebarContentBuilder {
 	}
 
 	/**
-	 * Milestone 8: hard-coded placeholder entries. A later milestone will
-	 * replace this method's body with real reads of tagged armor stands
-	 * (control_point / cp_order / cp_owner / cp_state) -- nothing else in
-	 * this class, and nothing in SidebarManager, needs to change when
-	 * that happens, since both only ever see the resulting Component
-	 * lines below.
+	 * Converts capture point entries into one sidebar line per entry, in
+	 * order. owner/progress are ignored for now -- Milestone 12 only
+	 * introduces the fields, a later milestone will render them.
 	 */
-	private static List<CapturePointEntry> readCapturePoints(ServerPlayer player) {
-		return List.of(
-				new CapturePointEntry("Alpha"),
-				new CapturePointEntry("Bravo"),
-				new CapturePointEntry("Charlie")
-		);
-	}
-
-	/** Converts capture point entries into one sidebar line per entry, in order. */
 	private static List<Component> capturePointLines(List<CapturePointEntry> capturePoints) {
 		return capturePoints.stream()
 				.map(entry -> (Component) Component.literal(entry.name()))
