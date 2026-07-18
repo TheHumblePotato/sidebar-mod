@@ -10,7 +10,7 @@ import net.minecraft.world.scores.Scoreboard;
  * Milestone 14's first real SidebarModeProvider. Reads a per-player
  * value off a configurable scoreboard objective (MODE_OBJECTIVE_NAME)
  * so the datapack can control each player's mode independently, e.g.
- * `/scoreboard players set <player> sidebar_mode 2` for LEADERBOARD.
+ * `/scoreboard players set <player> sidebar 2` for LEADERBOARD.
  *
  * Missing objective, missing player entry, or an out-of-range value all
  * safely fall back to EVENTS -- SidebarMode.fromId already defaults
@@ -22,7 +22,7 @@ import net.minecraft.world.scores.Scoreboard;
 public final class ScoreboardSidebarModeProvider implements SidebarModeProvider {
 
 	/** Datapack-owned objective; confirm this name matches the datapack. */
-	public static final String MODE_OBJECTIVE_NAME = "sidebar_mode";
+	public static final String MODE_OBJECTIVE_NAME = "sidebar";
 
 	@Override
 	public SidebarMode getMode(ServerPlayer player) {
