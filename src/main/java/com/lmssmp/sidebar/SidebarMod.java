@@ -9,18 +9,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Milestone 10: the tick loop now builds fresh content every refresh but
- * only calls SidebarManager (and only sends packets) when that content
- * actually differs from what was last rendered for that player --
- * SidebarContent's value-based equals() (a Java record) makes that a
- * plain .equals() call, no manual field comparisons. SidebarManager
- * itself is unchanged: it still rebuilds unconditionally whenever asked,
- * the decision to ask lives entirely here.
- *
- * This is a full rebuild every time content *does* change, not a diff --
- * correctness over efficiency for now, per Milestone 10's scope.
- * Milestone 11 can replace showSidebar's body with line-level diffing
- * without this class needing to change.
+ * Milestone 11: the tick loop now picks between SidebarManager's
+ * createSidebar (no previous content recorded for this player -- treat
+ * it like a fresh join) and updateSidebar (previous content exists and
+ * differs from the fresh content just built), instead of always calling
+ * one always-rebuild method. The join hook always calls createSidebar,
+ * since a freshly connected client has no sidebar on it yet regardless
+ * of anything SidebarManager remembers server-side.
  */
 public final class SidebarMod implements ModInitializer {
 
@@ -29,7 +24,7 @@ public final class SidebarMod implements ModInitializer {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger("LMSSMP Sidebar");
 
-	/** How often (in server ticks) every online player's sidebar rebuilds. 20 ticks ~= 1 second. */
+	/** How often (in server ticks) every online player's sidebar is checked for changes. 20 ticks ~= 1 second. */
 	private static final int REFRESH_INTERVAL_TICKS = 20;
 
 	private int ticksSinceLastRefresh = 0;
@@ -41,10 +36,11 @@ public final class SidebarMod implements ModInitializer {
 		// Build the sidebar as soon as a player's connection is fully set
 		// up, so they don't wait up to a full REFRESH_INTERVAL_TICKS for
 		// their first sidebar after joining. Touches only that one
-		// connection.
+		// connection. A fresh connection never has an existing sidebar on
+		// it, so this always creates rather than updates.
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
 			ServerPlayer player = handler.getPlayer();
-			SidebarManager.showSidebar(player, SidebarContentBuilder.buildSidebarContent(player));
+			SidebarManager.createSidebar(player, SidebarContentBuilder.buildSidebarContent(player));
 		});
 
 		ServerTickEvents.END_SERVER_TICK.register(this::onServerTick);
@@ -62,15 +58,18 @@ public final class SidebarMod implements ModInitializer {
 			SidebarContent previous = SidebarManager.getLastContent(player);
 			String name = player.getGameProfile().name();
 
-			// TEMP debug logging for Milestone 10 -- safe to delete once
-			// change detection is trusted; kept to one line per player so
-			// it's easy to grep and easy to remove.
+			// TEMP debug logging -- safe to delete once this is trusted,
+			// kept to one line per player so it's easy to grep and remove.
 			if (content.equals(previous)) {
 				LOGGER.info("[Sidebar] No changes for {}", name);
 				continue;
 			}
 
-			SidebarManager.showSidebar(player, content);
+			if (previous == null) {
+				SidebarManager.createSidebar(player, content);
+			} else {
+				SidebarManager.updateSidebar(player, previous, content);
+			}
 			LOGGER.info("[Sidebar] Updated {}", name);
 		}
 	}

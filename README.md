@@ -95,24 +95,43 @@ gradle wrapper --gradle-version 9.6.1
       it against `getLastContent`, and only calls `showSidebar` (and logs
       `[Sidebar] Updated <name>`) when they differ; otherwise it logs
       `[Sidebar] No changes for <name>` and sends nothing.
-- [ ] Milestone 11 — line-level packet diffing / update optimization
+- [x] Milestone 11 — line-level packet diffing. `SidebarManager`'s single
+      `showSidebar` is now three methods: `createSidebar` (full initial
+      build -- join, or after `removeSidebar`), `updateSidebar` (in-place
+      diff against previous content -- no objective remove/recreate, no
+      resent display-slot packet), and `removeSidebar` (teardown). Line
+      scores changed from `lines.size() - index` to a fixed
+      `SCORE_BASE - index` so a line's packet never depends on the total
+      line count, only on whether its own text changed. Removed lines use
+      the newly-verified `ClientboundResetScorePacket(owner, objectiveName)`.
+      A changed title uses `ClientboundSetObjectivePacket`'s
+      `METHOD_CHANGE` rather than remove+recreate. `SidebarMod`'s tick
+      loop now picks `createSidebar` vs `updateSidebar` based on whether
+      `getLastContent` returns anything.
 - [ ] Milestone 12 — `config/lmssmp-sidebar.json`
 - [ ] Milestone 13 — testing and cleanup
 
-Each milestone is a separate change; nothing after Milestone 10 has been
+Each milestone is a separate change; nothing after Milestone 11 has been
 implemented yet.
 
-### Testing Milestone 10
+### Testing Milestone 11
 
 1. `./gradlew build` and run a dedicated 26.2 server with the built jar.
-2. Join and watch the server console. You should see one
-   `[Sidebar] Updated <name>` line right after joining.
-3. Wait a few seconds with nothing changing. You should now see
-   `[Sidebar] No changes for <name>` once per second instead -- and no
-   visible sidebar flicker in-game during that stretch.
-4. Run `/scoreboard players set <name> score 5`. Within a second you
-   should see `[Sidebar] Updated <name>` again, the score change on
-   screen, and a brief flicker (expected -- see below).
-5. The debug logging is intentionally temporary (marked `TEMP` in
+2. Join and confirm the sidebar appears normally (this still goes
+   through `createSidebar`, unchanged from before).
+3. Run `/scoreboard players set <name> score 5`. Within a second, confirm
+   the `Score:` line updates -- and this time, watch closely: the rest of
+   the sidebar (title, team line, capture points) should **not** flicker
+   or blink, only the score line's number should change in place.
+4. Change teams (`/team join <other> <name>`) and confirm just the
+   `Your team:` line updates without a full-sidebar flicker.
+5. The debug logging is still temporary (marked `TEMP` in
    `SidebarMod.java`) -- delete the two `LOGGER.info(...)` calls once
-   this is trusted, no other cleanup needed.
+   this is trusted.
+
+**Note:** `ClientboundResetScorePacket(String owner, String objectiveName)`
+and `ClientboundSetObjectivePacket`'s `METHOD_CHANGE` behavior were
+verified against real 1.21.4 decompiled sources (a public mappings
+browser), not 26.2 sources directly -- the packet's structure has been
+completely stable across many versions, but the first thing to check
+with F12 if `./gradlew build` errors in `updateSidebar`.
