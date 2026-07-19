@@ -144,10 +144,6 @@ public final class SidebarContentBuilder {
 		lines.add(Component.literal("Score: " + readScore(player, SCORE_OBJECTIVE_NAME)));
 		lines.add(teamLine(player));
 		lines.add(Component.empty());
-		lines.add(
-			Component.literal("Current Events")
-				.withStyle(ChatFormatting.BOLD, HEADER_COLOR)
-		);
 
 		boolean anySection = false;
 
@@ -209,7 +205,7 @@ public final class SidebarContentBuilder {
 				Component.literal("Score: " + readScore(player, SCORE_OBJECTIVE_NAME)),
 				teamLine(player),
 				Component.empty(),
-				Component.literal("Leaderboard:"),
+				Component.literal("Leaderboard:") .withStyle(ChatFormatting.BOLD, SECTION_COLOR),
 				Component.literal("Red: " + readNamedScore(player, SCORE_OBJECTIVE_NAME, "#team1")),
 				Component.literal("Yellow: " + readNamedScore(player, SCORE_OBJECTIVE_NAME, "#team2")),
 				Component.literal("Green: " + readNamedScore(player, SCORE_OBJECTIVE_NAME, "#team3")),
