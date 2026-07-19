@@ -46,15 +46,33 @@ import java.util.WeakHashMap;
  * Read-only, same as everywhere else in this mod: never creates,
  * re-tags, or moves anything.
  *
- * PERFORMANCE (fixed): control points are global, per-level state, not
- * per-player state -- every online player sees the same capture point
- * list. The old implementation recomputed it (a full entity scan of the
- * dimension) once per player, every refresh, so server cost scaled with
- * player count for no reason: 20 players online meant 20 identical
- * world scans 5x/sec. It's now cached per ServerLevel, invalidated once
- * the server tick advances, so a full scan happens at most once per
- * refresh cycle no matter how many players are online -- every player
- * after the first that tick just reads the cached list.
+ * PERFORMANCE (two tiers of caching):
+ *
+ * 1) The per-tick CACHE below stops N online players from redundantly
+ *    recomputing the identical global capture-point list N times in the
+ *    same tick -- capture points are level-wide, not per-player. This
+ *    alone doesn't help with 1 player online, since there's no
+ *    cross-player redundancy to remove in that case.
+ *
+ * 2) ENTITY_CACHE is the fix that actually matters even solo: profiling
+ *    showed the real cost isn't the scoreboard reads, it's
+ *    getEntitiesOfClass itself -- EntitySectionStorage walks every
+ *    non-empty entity section in the loaded world to find the tagged
+ *    ones, and that's expensive regardless of how few control points
+ *    exist, every time it runs. But control point armor stands are
+ *    essentially static -- they aren't spawned or removed moment to
+ *    moment -- so there is no reason to redo that world-wide entity scan
+ *    5x/sec (the sidebar refresh rate). The entity scan itself is now
+ *    only redone every ENTITY_RESCAN_INTERVAL_TICKS; the fast-changing
+ *    per-entity scores (team, capturing state, time remaining) are
+ *    still read fresh on every call, off the entities found by the last
+ *    scan. A cached entity that's since been removed/unloaded is
+ *    filtered out cheaply (an isRemoved() check, not a re-scan) so a
+ *    despawned control point disappears immediately rather than waiting
+ *    for the next rescan; a *newly added* one will take up to
+ *    ENTITY_RESCAN_INTERVAL_TICKS to appear, which is the deliberate
+ *    trade-off -- tune that constant down if you need faster pickup of
+ *    newly placed control points.
  */
 public final class RealCapturePointProvider implements CapturePointProvider {
 
@@ -69,6 +87,16 @@ public final class RealCapturePointProvider implements CapturePointProvider {
 
 	/** Vanilla's default max world-border radius, used as the search box half-width. */
 	private static final double SEARCH_RADIUS = 3.0E7;
+
+	/**
+	 * How often the expensive world-wide entity scan (getEntitiesOfClass)
+	 * is redone, in ticks. 100 ticks = 5 seconds. Control point armor
+	 * stands are effectively static, so this can be much slower than the
+	 * sidebar's own refresh rate without anyone noticing -- lower this if
+	 * your setup adds/removes control points at runtime and needs faster
+	 * pickup of new ones.
+	 */
+	private static final long ENTITY_RESCAN_INTERVAL_TICKS = 100;
 
 	/**
 	 * Hardcoded generous vertical range instead of calling
@@ -93,6 +121,17 @@ public final class RealCapturePointProvider implements CapturePointProvider {
 	private record CacheEntry(long tick, List<CapturePointEntry> entries) {
 	}
 
+	/**
+	 * Separate, longer-lived cache of just the *tagged entities*
+	 * themselves (not their scores) -- this is what lets the expensive
+	 * getEntitiesOfClass call happen far less often than the per-tick
+	 * score reads.
+	 */
+	private static final Map<ServerLevel, EntityCacheEntry> ENTITY_CACHE = new WeakHashMap<>();
+
+	private record EntityCacheEntry(long tick, List<Entity> entities) {
+	}
+
 	@Override
 	public List<CapturePointEntry> getCapturePoints(ServerPlayer player) {
 		ServerLevel level = (ServerLevel) player.level();
@@ -109,24 +148,13 @@ public final class RealCapturePointProvider implements CapturePointProvider {
 	}
 
 	/**
-	 * The actual entity scan + scoreboard reads, unchanged in behavior
-	 * from before -- just factored out of getCapturePoints so caching
-	 * can wrap it, and taking a ServerLevel directly since this no
-	 * longer needs anything else player-specific.
+	 * The score-reading half of the work, unchanged in behavior from
+	 * before -- just now fed by taggedEntities(level) instead of doing
+	 * its own scan every call.
 	 */
 	private static List<CapturePointEntry> computeCapturePoints(ServerLevel level) {
 		Scoreboard scoreboard = level.getServer().getScoreboard();
-
-		AABB searchBounds = new AABB(
-				-SEARCH_RADIUS, MIN_Y, -SEARCH_RADIUS,
-				SEARCH_RADIUS, MAX_Y, SEARCH_RADIUS
-		);
-
-		List<Entity> taggedEntities = level.getEntitiesOfClass(
-				Entity.class,
-				searchBounds,
-				entity -> entity.entityTags().contains(TAG)
-		);
+		List<Entity> taggedEntities = taggedEntities(level);
 
 		List<CapturePointEntry> entries = new ArrayList<>();
 
@@ -148,6 +176,47 @@ public final class RealCapturePointProvider implements CapturePointProvider {
 
 		entries.sort(Comparator.comparingInt(CapturePointEntry::order));
 		return entries;
+	}
+
+	/**
+	 * Returns the tagged control-point entities for this level, rescanning
+	 * the world only every ENTITY_RESCAN_INTERVAL_TICKS. Between rescans,
+	 * the cached list is filtered for entities that have since been
+	 * removed/unloaded (a cheap isRemoved() check per entry, not another
+	 * world scan), so a despawned control point still disappears
+	 * immediately rather than lingering until the next rescan.
+	 */
+	private static List<Entity> taggedEntities(ServerLevel level) {
+		long currentTick = level.getServer().getTickCount();
+
+		EntityCacheEntry cached = ENTITY_CACHE.get(level);
+		if (cached != null && currentTick - cached.tick() < ENTITY_RESCAN_INTERVAL_TICKS) {
+			List<Entity> stillPresent = new ArrayList<>(cached.entities().size());
+			for (Entity entity : cached.entities()) {
+				if (!entity.isRemoved()) {
+					stillPresent.add(entity);
+				}
+			}
+			return stillPresent;
+		}
+
+		List<Entity> fresh = scanForTaggedEntities(level);
+		ENTITY_CACHE.put(level, new EntityCacheEntry(currentTick, fresh));
+		return fresh;
+	}
+
+	/** The actual world-wide entity scan -- now only called once every ENTITY_RESCAN_INTERVAL_TICKS. */
+	private static List<Entity> scanForTaggedEntities(ServerLevel level) {
+		AABB searchBounds = new AABB(
+				-SEARCH_RADIUS, MIN_Y, -SEARCH_RADIUS,
+				SEARCH_RADIUS, MAX_Y, SEARCH_RADIUS
+		);
+
+		return level.getEntitiesOfClass(
+				Entity.class,
+				searchBounds,
+				entity -> entity.entityTags().contains(TAG)
+		);
 	}
 
 	private static int readScore(Scoreboard scoreboard, Entity entity, String objectiveName, int fallback) {
