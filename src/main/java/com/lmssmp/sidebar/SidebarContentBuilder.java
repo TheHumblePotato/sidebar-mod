@@ -40,7 +40,9 @@ import java.util.Optional;
  * specified as needing min:s formatting).
  */
 public final class SidebarContentBuilder {
-
+	private static final ChatFormatting HEADER_COLOR = ChatFormatting.GOLD;
+	private static final ChatFormatting SECTION_COLOR = ChatFormatting.AQUA;
+	private static final ChatFormatting LABEL_COLOR = ChatFormatting.GRAY;
 	/** Datapack-owned objective this milestone reads from. */
 	private static final String SCORE_OBJECTIVE_NAME = "score";
 
@@ -57,7 +59,9 @@ public final class SidebarContentBuilder {
 	private static final String RANDOM_EVENT_NAME_KEY = "random_event_name";
 	private static final String GLOBAL_EVENT_NAME_KEY = "global_event_name";
 
-	private static final Component TITLE = Component.literal("LMSSMP");
+	private static final Component TITLE =
+        Component.literal("LMSSMP")
+        .withStyle(ChatFormatting.BOLD, ChatFormatting.GOLD);
 	private static final Component NO_TEAM_LABEL = Component.literal("None");
 
 	/**
@@ -140,21 +144,28 @@ public final class SidebarContentBuilder {
 		lines.add(Component.literal("Score: " + readScore(player, SCORE_OBJECTIVE_NAME)));
 		lines.add(teamLine(player));
 		lines.add(Component.empty());
-		lines.add(Component.literal("Current Events:"));
+		lines.add(
+			Component.literal("Current Events")
+				.withStyle(ChatFormatting.BOLD, HEADER_COLOR)
+		);
 
 		boolean anySection = false;
 
 		if (readNamedScore(player, CAPTURE_POINT_EVENT_OBJ, GAME_HOLDER) == 1) {
 			anySection = true;
-			lines.add(Component.empty());
-			lines.add(Component.literal("Capture Points"));
+			lines.add(
+				Component.literal("Capture Points")
+					.withStyle(ChatFormatting.BOLD, SECTION_COLOR)
+			);
 			lines.addAll(capturePointStatusLines(player));
 		}
 
 		if (readNamedScore(player, RANDOM_EVENT_ACTIVE_OBJ, GAME_HOLDER) == 1) {
 			anySection = true;
-			lines.add(Component.empty());
-			lines.add(Component.literal("Random Event"));
+			lines.add(
+				Component.literal("Random Event")
+					.withStyle(ChatFormatting.BOLD, SECTION_COLOR)
+			);
 			lines.add(Component.literal("Current Event: " + GameStorageReader.readString(player, RANDOM_EVENT_NAME_KEY)));
 			lines.add(Component.literal(
 				"Duration: " + formatTime(
@@ -165,8 +176,10 @@ public final class SidebarContentBuilder {
 
 		if (readNamedScore(player, GLOBAL_EVENT_ACTIVE_OBJ, GAME_HOLDER) == 1) {
 			anySection = true;
-			lines.add(Component.empty());
-			lines.add(Component.literal("Global Event"));
+			lines.add(
+				Component.literal("Global Event")
+					.withStyle(ChatFormatting.BOLD, SECTION_COLOR)
+			);
 			lines.add(Component.literal("Event: " + GameStorageReader.readString(player, GLOBAL_EVENT_NAME_KEY)));
 			if (readNamedScore(player, GLOBAL_EVENT_TIME_LIMIT_OBJ, GAME_HOLDER) == 1) {
 				lines.add(Component.literal(
@@ -342,7 +355,7 @@ public final class SidebarContentBuilder {
 					.append(Component.literal(" (" + formatTime(point.timeTicks()) + ")"));
 		}
 		if (point.team() == 0) {
-			return Component.literal("\u2b1c Uncaptured");
+			return Component.literal("⬜");
 		}
 		return Component.literal("❎")
         .withStyle(teamColor(point.team()));
