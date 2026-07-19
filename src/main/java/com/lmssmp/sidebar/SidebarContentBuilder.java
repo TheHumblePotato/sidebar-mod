@@ -40,9 +40,7 @@ import java.util.Optional;
  * specified as needing min:s formatting).
  */
 public final class SidebarContentBuilder {
-	private static final ChatFormatting HEADER_COLOR = ChatFormatting.GOLD;
 	private static final ChatFormatting SECTION_COLOR = ChatFormatting.AQUA;
-	private static final ChatFormatting LABEL_COLOR = ChatFormatting.GRAY;
 	/** Datapack-owned objective this milestone reads from. */
 	private static final String SCORE_OBJECTIVE_NAME = "score";
 
@@ -187,7 +185,7 @@ public final class SidebarContentBuilder {
 		}
 
 		if (!anySection) {
-			lines.add(Component.literal("None"));
+			lines.add(Component.literal("Current Events: None"));
 		}
 
 		return new SidebarContent(TITLE, List.copyOf(lines));
