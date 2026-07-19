@@ -50,7 +50,7 @@ import java.util.List;
  */
 public final class RealCapturePointProvider implements CapturePointProvider {
 
-	private static final String TAG = "control_point";
+	private static final String TAG = "Capture_Point";
 
 	private static final String OBJ_ORDER = "capture_point";
 	private static final String OBJ_ENABLED = "capture_point_enabled";
