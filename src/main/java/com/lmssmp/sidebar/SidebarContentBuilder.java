@@ -12,7 +12,9 @@ import net.minecraft.world.scores.PlayerTeam;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.WeakHashMap;
 
 /**
  * Reads existing Minecraft scoreboard state -- owned and populated by the
@@ -38,6 +40,18 @@ import java.util.Optional;
  * datapack's command storage; their durations are printed as raw score
  * values (no tick->time conversion -- only capture_point_time is
  * specified as needing min:s formatting).
+ *
+ * PERFORMANCE: capture_point_event, random/global event state, and the
+ * four team totals (#team1..#team4) are global, per-level values -- the
+ * same for every online player. They used to be re-read off the
+ * scoreboard (and, for event names, command storage) once per player
+ * per refresh, so cost scaled with player count for no reason -- the
+ * same pattern RealCapturePointProvider had. They're now folded into a
+ * single GlobalSnapshot computed once per ServerLevel per tick (cached
+ * the same way RealCapturePointProvider caches its entity scan); every
+ * player after the first that tick just reads the cached snapshot.
+ * Truly per-player values (own Score, own Team) are unaffected and still
+ * read fresh per player, since those really do differ per player.
  */
 public final class SidebarContentBuilder {
 	private static final ChatFormatting SECTION_COLOR = ChatFormatting.AQUA;
@@ -76,6 +90,37 @@ public final class SidebarContentBuilder {
 	 * mode-dispatch logic changing -- see setSidebarModeProvider.
 	 */
 	private static SidebarModeProvider sidebarModeProvider = new PlaceholderSidebarModeProvider();
+
+	/**
+	 * One cache entry per ServerLevel, holding the tick it was computed
+	 * on plus the resulting snapshot. Same shape/reasoning as
+	 * RealCapturePointProvider's cache. WeakHashMap so an unloaded level
+	 * doesn't pin memory forever.
+	 */
+	private static final Map<ServerLevel, GlobalCacheEntry> GLOBAL_CACHE = new WeakHashMap<>();
+
+	private record GlobalCacheEntry(long tick, GlobalSnapshot snapshot) {
+	}
+
+	/**
+	 * Every global (non-player-specific) value buildEvents/buildLeaderboard
+	 * need, computed once per level per tick instead of once per player.
+	 */
+	private record GlobalSnapshot(
+			boolean capturePointsActive,
+			boolean randomEventActive,
+			String randomEventName,
+			int randomEventDuration,
+			boolean globalEventActive,
+			String globalEventName,
+			boolean globalEventHasDuration,
+			int globalEventDuration,
+			int teamRedScore,
+			int teamYellowScore,
+			int teamGreenScore,
+			int teamBlueScore
+	) {
+	}
 
 	private SidebarContentBuilder() {
 	}
@@ -117,6 +162,67 @@ public final class SidebarContentBuilder {
 	}
 
 	/**
+	 * Returns the current GlobalSnapshot for this player's level, reusing
+	 * it if it was already computed this tick. Same cache-then-recompute
+	 * shape as RealCapturePointProvider.getCapturePoints.
+	 */
+	private static GlobalSnapshot globalSnapshot(ServerPlayer player) {
+		ServerLevel level = (ServerLevel) player.level();
+		long currentTick = level.getServer().getTickCount();
+
+		GlobalCacheEntry cached = GLOBAL_CACHE.get(level);
+		if (cached != null && cached.tick() == currentTick) {
+			return cached.snapshot();
+		}
+
+		GlobalSnapshot snapshot = computeGlobalSnapshot(player);
+		GLOBAL_CACHE.put(level, new GlobalCacheEntry(currentTick, snapshot));
+		return snapshot;
+	}
+
+	/**
+	 * The actual scoreboard/command-storage reads, unchanged in behavior
+	 * from the old per-player code -- just done once and shared. Event
+	 * name/duration reads are skipped entirely when the corresponding
+	 * "active" flag is false, same short-circuiting the old inline code
+	 * did (a command-storage lookup or extra score read isn't worth doing
+	 * for a section that won't render).
+	 */
+	private static GlobalSnapshot computeGlobalSnapshot(ServerPlayer player) {
+		boolean capturePointsActive = readNamedScore(player, CAPTURE_POINT_EVENT_OBJ, GAME_HOLDER) == 1;
+
+		boolean randomEventActive = readNamedScore(player, RANDOM_EVENT_ACTIVE_OBJ, GAME_HOLDER) == 1;
+		String randomEventName = randomEventActive
+				? GameStorageReader.readString(player, RANDOM_EVENT_NAME_KEY)
+				: "";
+		int randomEventDuration = randomEventActive
+				? readNamedScore(player, RANDOM_EVENT_DURATION_OBJ, GAME_HOLDER)
+				: 0;
+
+		boolean globalEventActive = readNamedScore(player, GLOBAL_EVENT_ACTIVE_OBJ, GAME_HOLDER) == 1;
+		String globalEventName = globalEventActive
+				? GameStorageReader.readString(player, GLOBAL_EVENT_NAME_KEY)
+				: "";
+		boolean globalEventHasDuration = globalEventActive
+				&& readNamedScore(player, GLOBAL_EVENT_TIME_LIMIT_OBJ, GAME_HOLDER) == 1;
+		int globalEventDuration = globalEventHasDuration
+				? readNamedScore(player, GLOBAL_EVENT_DURATION_OBJ, GAME_HOLDER)
+				: 0;
+
+		int teamRedScore = readNamedScore(player, SCORE_OBJECTIVE_NAME, "#team1");
+		int teamYellowScore = readNamedScore(player, SCORE_OBJECTIVE_NAME, "#team2");
+		int teamGreenScore = readNamedScore(player, SCORE_OBJECTIVE_NAME, "#team3");
+		int teamBlueScore = readNamedScore(player, SCORE_OBJECTIVE_NAME, "#team4");
+
+		return new GlobalSnapshot(
+				capturePointsActive,
+				randomEventActive, randomEventName, randomEventDuration,
+				globalEventActive, globalEventName, globalEventHasDuration, globalEventDuration,
+				teamRedScore, teamYellowScore, teamGreenScore, teamBlueScore
+		);
+	}
+
+	/**
 	 * Events layout, matching the spec exactly:
 	 *
 	 *   Score: ####
@@ -143,9 +249,10 @@ public final class SidebarContentBuilder {
 		lines.add(teamLine(player));
 		lines.add(Component.empty());
 
+		GlobalSnapshot snapshot = globalSnapshot(player);
 		boolean anySection = false;
 
-		if (readNamedScore(player, CAPTURE_POINT_EVENT_OBJ, GAME_HOLDER) == 1) {
+		if (snapshot.capturePointsActive()) {
 			anySection = true;
 			lines.add(
 				Component.literal("Capture Points")
@@ -154,33 +261,25 @@ public final class SidebarContentBuilder {
 			lines.addAll(capturePointStatusLines(player));
 		}
 
-		if (readNamedScore(player, RANDOM_EVENT_ACTIVE_OBJ, GAME_HOLDER) == 1) {
+		if (snapshot.randomEventActive()) {
 			anySection = true;
 			lines.add(
 				Component.literal("Random Event")
 					.withStyle(ChatFormatting.BOLD, SECTION_COLOR)
 			);
-			lines.add(Component.literal("Current Event: " + GameStorageReader.readString(player, RANDOM_EVENT_NAME_KEY)));
-			lines.add(Component.literal(
-				"Duration: " + formatTime(
-					readNamedScore(player, RANDOM_EVENT_DURATION_OBJ, GAME_HOLDER)
-				)
-			));
+			lines.add(Component.literal("Current Event: " + snapshot.randomEventName()));
+			lines.add(Component.literal("Duration: " + formatTime(snapshot.randomEventDuration())));
 		}
 
-		if (readNamedScore(player, GLOBAL_EVENT_ACTIVE_OBJ, GAME_HOLDER) == 1) {
+		if (snapshot.globalEventActive()) {
 			anySection = true;
 			lines.add(
 				Component.literal("Global Event")
 					.withStyle(ChatFormatting.BOLD, SECTION_COLOR)
 			);
-			lines.add(Component.literal("Event: " + GameStorageReader.readString(player, GLOBAL_EVENT_NAME_KEY)));
-			if (readNamedScore(player, GLOBAL_EVENT_TIME_LIMIT_OBJ, GAME_HOLDER) == 1) {
-				lines.add(Component.literal(
-					"Duration: " + formatTime(
-						readNamedScore(player, GLOBAL_EVENT_DURATION_OBJ, GAME_HOLDER)
-					)
-				));
+			lines.add(Component.literal("Event: " + snapshot.globalEventName()));
+			if (snapshot.globalEventHasDuration()) {
+				lines.add(Component.literal("Duration: " + formatTime(snapshot.globalEventDuration())));
 			}
 		}
 
@@ -199,15 +298,17 @@ public final class SidebarContentBuilder {
 	 * named "team1"). No team 5 row, since team 5 is for individuals.
 	 */
 	private static SidebarContent buildLeaderboard(ServerPlayer player) {
+		GlobalSnapshot snapshot = globalSnapshot(player);
+
 		List<Component> lines = List.of(
 				Component.literal("Score: " + readScore(player, SCORE_OBJECTIVE_NAME)),
 				teamLine(player),
 				Component.empty(),
 				Component.literal("Leaderboard:") .withStyle(ChatFormatting.BOLD, SECTION_COLOR),
-				Component.literal("Red: " + readNamedScore(player, SCORE_OBJECTIVE_NAME, "#team1")),
-				Component.literal("Yellow: " + readNamedScore(player, SCORE_OBJECTIVE_NAME, "#team2")),
-				Component.literal("Green: " + readNamedScore(player, SCORE_OBJECTIVE_NAME, "#team3")),
-				Component.literal("Blue: " + readNamedScore(player, SCORE_OBJECTIVE_NAME, "#team4"))
+				Component.literal("Red: " + snapshot.teamRedScore()),
+				Component.literal("Yellow: " + snapshot.teamYellowScore()),
+				Component.literal("Green: " + snapshot.teamGreenScore()),
+				Component.literal("Blue: " + snapshot.teamBlueScore())
 		);
 
 		return new SidebarContent(TITLE, lines);

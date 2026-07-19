@@ -11,6 +11,8 @@ import net.minecraft.world.scores.Scoreboard;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
 /**
  * Replaces PlaceholderCapturePointProvider. Reads control points from
  * real entities tagged "control_point" in the player's level. Each such
@@ -44,9 +46,15 @@ import java.util.List;
  * Read-only, same as everywhere else in this mod: never creates,
  * re-tags, or moves anything.
  *
- * No caching yet -- every call walks all loaded entities. Fine given
- * the 4-tick refresh interval; a later milestone can cache this
- * once-per-tick (not once-per-player) if profiling says it's needed.
+ * PERFORMANCE (fixed): control points are global, per-level state, not
+ * per-player state -- every online player sees the same capture point
+ * list. The old implementation recomputed it (a full entity scan of the
+ * dimension) once per player, every refresh, so server cost scaled with
+ * player count for no reason: 20 players online meant 20 identical
+ * world scans 5x/sec. It's now cached per ServerLevel, invalidated once
+ * the server tick advances, so a full scan happens at most once per
+ * refresh cycle no matter how many players are online -- every player
+ * after the first that tick just reads the cached list.
  */
 public final class RealCapturePointProvider implements CapturePointProvider {
 
@@ -73,16 +81,47 @@ public final class RealCapturePointProvider implements CapturePointProvider {
 	private static final double MIN_Y = -2048;
 	private static final double MAX_Y = 2048;
 
+	/**
+	 * One cache entry per ServerLevel, holding the tick it was computed
+	 * on plus the resulting list. WeakHashMap so a level that's unloaded
+	 * (e.g. server shutdown/reload in a dev environment) doesn't pin
+	 * memory forever -- ServerLevel instances aren't reused across
+	 * server restarts anyway.
+	 */
+	private static final Map<ServerLevel, CacheEntry> CACHE = new WeakHashMap<>();
+
+	private record CacheEntry(long tick, List<CapturePointEntry> entries) {
+	}
+
 	@Override
 	public List<CapturePointEntry> getCapturePoints(ServerPlayer player) {
 		ServerLevel level = (ServerLevel) player.level();
+		long currentTick = level.getServer().getTickCount();
+
+		CacheEntry cached = CACHE.get(level);
+		if (cached != null && cached.tick() == currentTick) {
+			return cached.entries();
+		}
+
+		List<CapturePointEntry> entries = computeCapturePoints(level);
+		CACHE.put(level, new CacheEntry(currentTick, entries));
+		return entries;
+	}
+
+	/**
+	 * The actual entity scan + scoreboard reads, unchanged in behavior
+	 * from before -- just factored out of getCapturePoints so caching
+	 * can wrap it, and taking a ServerLevel directly since this no
+	 * longer needs anything else player-specific.
+	 */
+	private static List<CapturePointEntry> computeCapturePoints(ServerLevel level) {
 		Scoreboard scoreboard = level.getServer().getScoreboard();
 
 		AABB searchBounds = new AABB(
 				-SEARCH_RADIUS, MIN_Y, -SEARCH_RADIUS,
 				SEARCH_RADIUS, MAX_Y, SEARCH_RADIUS
 		);
-		
+
 		List<Entity> taggedEntities = level.getEntitiesOfClass(
 				Entity.class,
 				searchBounds,

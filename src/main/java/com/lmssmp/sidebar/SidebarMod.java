@@ -42,7 +42,7 @@ public final class SidebarMod implements ModInitializer {
 	private static final Logger LOGGER = LoggerFactory.getLogger("LMSSMP Sidebar");
 
 	/** How often (in server ticks) every online player's sidebar is checked for changes. 4 ticks ~= 5x/sec. */
-	private static final int REFRESH_INTERVAL_TICKS = 4;
+	private static final int REFRESH_INTERVAL_TICKS = 10;
 
 	private int ticksSinceLastRefresh = 0;
 
