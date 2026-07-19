@@ -146,23 +146,34 @@ public final class SidebarContentBuilder {
 
 		if (readNamedScore(player, CAPTURE_POINT_EVENT_OBJ, GAME_HOLDER) == 1) {
 			anySection = true;
+			lines.add(Component.empty());
 			lines.add(Component.literal("Capture Points"));
 			lines.addAll(capturePointStatusLines(player));
 		}
 
 		if (readNamedScore(player, RANDOM_EVENT_ACTIVE_OBJ, GAME_HOLDER) == 1) {
 			anySection = true;
+			lines.add(Component.empty());
 			lines.add(Component.literal("Random Event"));
 			lines.add(Component.literal("Current Event: " + GameStorageReader.readString(player, RANDOM_EVENT_NAME_KEY)));
-			lines.add(Component.literal("Duration: " + readNamedScore(player, RANDOM_EVENT_DURATION_OBJ, GAME_HOLDER)));
+			lines.add(Component.literal(
+				"Duration: " + formatTime(
+					readNamedScore(player, RANDOM_EVENT_DURATION_OBJ, GAME_HOLDER)
+				)
+			));
 		}
 
 		if (readNamedScore(player, GLOBAL_EVENT_ACTIVE_OBJ, GAME_HOLDER) == 1) {
 			anySection = true;
+			lines.add(Component.empty());
 			lines.add(Component.literal("Global Event"));
 			lines.add(Component.literal("Event: " + GameStorageReader.readString(player, GLOBAL_EVENT_NAME_KEY)));
 			if (readNamedScore(player, GLOBAL_EVENT_TIME_LIMIT_OBJ, GAME_HOLDER) == 1) {
-				lines.add(Component.literal("Duration: " + readNamedScore(player, GLOBAL_EVENT_DURATION_OBJ, GAME_HOLDER)));
+				lines.add(Component.literal(
+					"Duration: " + formatTime(
+						readNamedScore(player, GLOBAL_EVENT_DURATION_OBJ, GAME_HOLDER)
+					)
+				));
 			}
 		}
 
@@ -274,6 +285,17 @@ public final class SidebarContentBuilder {
 		return team.getFormattedDisplayName();
 	}
 
+	private static ChatFormatting teamColor(int teamId) {
+		return switch (teamId) {
+			case 1 -> ChatFormatting.RED;
+			case 2 -> ChatFormatting.YELLOW;
+			case 3 -> ChatFormatting.GREEN;
+			case 4 -> ChatFormatting.BLUE;
+			case 5 -> ChatFormatting.GRAY;
+			default -> ChatFormatting.WHITE;
+		};
+	}
+
 	/**
 	 * One line per enabled capture point, in ascending order (order
 	 * comes directly from each entity's own "capture_point" score).
@@ -302,26 +324,28 @@ public final class SidebarContentBuilder {
 	 */
 	private static Component capturePointStatus(CapturePointEntry point) {
 		if (point.capturingState() != 0) {
-			return Component.literal("\u2694 ")
-					.append(teamLabel(point.capturingTeam()))
-					.append(Component.literal(" capturing (" + formatTime(point.timeTicks()) + ")"));
+			Component previousOwner;
+
+			if (point.team() == 0) {
+				previousOwner = Component.literal("⬜");
+			} else {
+				previousOwner = Component.literal("❎")
+						.withStyle(teamColor(point.team()));
+			}
+
+			Component capturing = Component.literal(" ⚔")
+					.withStyle(teamColor(point.capturingTeam()));
+
+			return Component.empty()
+					.append(previousOwner)
+					.append(capturing)
+					.append(Component.literal(" (" + formatTime(point.timeTicks()) + ")"));
 		}
 		if (point.team() == 0) {
 			return Component.literal("\u2b1c Uncaptured");
 		}
-		return Component.literal("\u274e ").append(teamLabel(point.team()));
-	}
-
-	/** Team id -> colored name, per the datapack's 1=Red,2=Yellow,3=Green,4=Blue,5=Grey convention. */
-	private static Component teamLabel(int teamId) {
-		return switch (teamId) {
-			case 1 -> Component.literal("Red").withStyle(ChatFormatting.RED);
-			case 2 -> Component.literal("Yellow").withStyle(ChatFormatting.YELLOW);
-			case 3 -> Component.literal("Green").withStyle(ChatFormatting.GREEN);
-			case 4 -> Component.literal("Blue").withStyle(ChatFormatting.BLUE);
-			case 5 -> Component.literal("Grey").withStyle(ChatFormatting.GRAY);
-			default -> Component.literal("None");
-		};
+		return Component.literal("❎")
+        .withStyle(teamColor(point.team()));
 	}
 
 	/**

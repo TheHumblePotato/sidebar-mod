@@ -32,7 +32,8 @@ final class GameStorageReader {
 	 * whatever `/data ... storage <id>` your datapack actually uses for
 	 * random_event_name / global_event_name, and update if different.
 	 */
-	private static final Identifier GAME_STORAGE_ID = Identifier.fromNamespaceAndPath("game", "main");
+	private static final Identifier GAME_STORAGE_ID =
+        Identifier.fromNamespaceAndPath("events", "game");
 
 	private GameStorageReader() {
 	}
