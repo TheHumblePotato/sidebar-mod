@@ -1,5 +1,6 @@
 package com.lmssmp.sidebar;
 
+import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -27,39 +28,45 @@ import java.util.Optional;
  * SCRATCH_SCOREBOARD, which is never shared with the server and never
  * read from.
  *
- * Milestone 13: content generation is split by SidebarMode
- * (buildEvents/buildLeaderboard/buildMini), chosen per player via a
- * swappable SidebarModeProvider -- same injection style as
- * CapturePointProvider. buildSidebarContent returns Optional.empty()
- * for HIDDEN rather than an "empty" SidebarContent, so the caller can
- * tell "nothing to show" apart from "a sidebar with few/no lines" and
- * react accordingly.
- *
- * Milestone 14: every visible layout now shares one "Your Team: <name>"
- * line via teamLine(), instead of only EVENTS having it. buildLeaderboard
- * no longer returns hardcoded zeros -- it reads real per-team totals via
- * the new readNamedScore helper, which looks up a plain-string
- * scoreboard holder (e.g. "Red") the same way readScore looks up a
- * player. ASSUMPTION: team totals live on the same "score" objective,
- * keyed by team name as the holder (e.g.
- * `/scoreboard players add Red score 118`). If the datapack stores
- * these differently, only SCORE_OBJECTIVE_NAME / the four holder names
- * in buildLeaderboard need to change.
+ * Milestone 15: Events mode rewritten to match the exact spec layout --
+ * a shared "Team: <name>" line (not "Your Team:"), and a
+ * "Current Events:" section with three independently-gated
+ * sub-sections (Capture Points / Random Event / Global Event), each
+ * driven off "#Game"-holder scores. Capture point data now comes from
+ * RealCapturePointProvider (real tagged armor stands) instead of the
+ * Milestone 8-12 placeholder. Random/Global event names come from the
+ * datapack's command storage; their durations are printed as raw score
+ * values (no tick->time conversion -- only capture_point_time is
+ * specified as needing min:s formatting).
  */
 public final class SidebarContentBuilder {
 
 	/** Datapack-owned objective this milestone reads from. */
 	private static final String SCORE_OBJECTIVE_NAME = "score";
 
+	/** Fake scoreboard holder the datapack uses for global/game-wide state. */
+	private static final String GAME_HOLDER = "#Game";
+
+	private static final String CAPTURE_POINT_EVENT_OBJ = "capture_point_event";
+	private static final String RANDOM_EVENT_ACTIVE_OBJ = "random_event_active";
+	private static final String RANDOM_EVENT_DURATION_OBJ = "random_event_duration";
+	private static final String GLOBAL_EVENT_ACTIVE_OBJ = "global_event_active";
+	private static final String GLOBAL_EVENT_TIME_LIMIT_OBJ = "global_event_time_limit";
+	private static final String GLOBAL_EVENT_DURATION_OBJ = "global_event_duration";
+
+	private static final String RANDOM_EVENT_NAME_KEY = "random_event_name";
+	private static final String GLOBAL_EVENT_NAME_KEY = "global_event_name";
+
 	private static final Component TITLE = Component.literal("LMSSMP");
 	private static final Component NO_TEAM_LABEL = Component.literal("None");
 
 	/**
-	 * Swappable so a later milestone can supply real capture point data
-	 * (e.g. a provider that scans tagged armor stands) without this class
-	 * otherwise changing -- see setCapturePointProvider.
+	 * Swappable so a later milestone can supply a different capture point
+	 * source without this class otherwise changing -- see
+	 * setCapturePointProvider. Default is now the real armor-stand-backed
+	 * provider, not a placeholder.
 	 */
-	private static CapturePointProvider capturePointProvider = new PlaceholderCapturePointProvider();
+	private static CapturePointProvider capturePointProvider = new RealCapturePointProvider();
 
 	/**
 	 * Swappable so a later milestone can supply a real per-player mode
@@ -72,9 +79,9 @@ public final class SidebarContentBuilder {
 	}
 
 	/**
-	 * Lets a later milestone register a real CapturePointProvider (e.g.
-	 * one backed by tagged armor stands) in place of the placeholder
-	 * default, without any other method here needing to change.
+	 * Lets a later milestone register a different CapturePointProvider in
+	 * place of the current default, without any other method here
+	 * needing to change.
 	 */
 	public static void setCapturePointProvider(CapturePointProvider provider) {
 		capturePointProvider = provider;
@@ -107,28 +114,75 @@ public final class SidebarContentBuilder {
 		};
 	}
 
-	/** The original (Milestone 8-12) layout: score, team, capture points. */
+	/**
+	 * Events layout, matching the spec exactly:
+	 *
+	 *   Score: ####
+	 *   Team: ####
+	 *   (blank)
+	 *   Current Events:
+	 *   Capture Points          <- only if #Game capture_point_event == 1
+	 *   #1 ***
+	 *   ...
+	 *   Random Event            <- only if #Game random_event_active == 1
+	 *   Current Event: ___
+	 *   Duration: ___
+	 *   Global Event            <- only if #Game global_event_active == 1
+	 *   Event: ___
+	 *   Duration: ___           <- only if #Game global_event_time_limit == 1
+	 *
+	 * "None" is shown if none of the three sub-sections are active --
+	 * that fallback isn't in the spec explicitly, it's a reasonable
+	 * default so the section never renders as a bare, empty header.
+	 */
 	private static SidebarContent buildEvents(ServerPlayer player) {
 		List<Component> lines = new ArrayList<>();
 		lines.add(Component.literal("Score: " + readScore(player, SCORE_OBJECTIVE_NAME)));
-		lines.add(Component.empty());
 		lines.add(teamLine(player));
 		lines.add(Component.empty());
-		lines.add(Component.literal("Capture Points:"));
-		lines.addAll(capturePointLines(capturePointProvider.getCapturePoints(player)));
+		lines.add(Component.literal("Current Events:"));
+
+		boolean anySection = false;
+
+		if (readNamedScore(player, CAPTURE_POINT_EVENT_OBJ, GAME_HOLDER) == 1) {
+			anySection = true;
+			lines.add(Component.literal("Capture Points"));
+			lines.addAll(capturePointStatusLines(player));
+		}
+
+		if (readNamedScore(player, RANDOM_EVENT_ACTIVE_OBJ, GAME_HOLDER) == 1) {
+			anySection = true;
+			lines.add(Component.literal("Random Event"));
+			lines.add(Component.literal("Current Event: " + GameStorageReader.readString(player, RANDOM_EVENT_NAME_KEY)));
+			lines.add(Component.literal("Duration: " + readNamedScore(player, RANDOM_EVENT_DURATION_OBJ, GAME_HOLDER)));
+		}
+
+		if (readNamedScore(player, GLOBAL_EVENT_ACTIVE_OBJ, GAME_HOLDER) == 1) {
+			anySection = true;
+			lines.add(Component.literal("Global Event"));
+			lines.add(Component.literal("Event: " + GameStorageReader.readString(player, GLOBAL_EVENT_NAME_KEY)));
+			if (readNamedScore(player, GLOBAL_EVENT_TIME_LIMIT_OBJ, GAME_HOLDER) == 1) {
+				lines.add(Component.literal("Duration: " + readNamedScore(player, GLOBAL_EVENT_DURATION_OBJ, GAME_HOLDER)));
+			}
+		}
+
+		if (!anySection) {
+			lines.add(Component.literal("None"));
+		}
 
 		return new SidebarContent(TITLE, List.copyOf(lines));
 	}
 
 	/**
-	 * Milestone 14: now reads real per-team totals via readNamedScore
-	 * instead of the old Milestone 13 hardcoded zeros. Also gained the
-	 * shared team line.
+	 * Leaderboard layout: Score, Team, blank, "Leaderboard:", then one
+	 * fixed Red/Yellow/Green/Blue line each, reading team totals off the
+	 * "#team1".."#team4" fake-player holders (per your correction --
+	 * these are fake players named "#team1" etc, not real Team objects
+	 * named "team1"). No team 5 row, since team 5 is for individuals.
 	 */
 	private static SidebarContent buildLeaderboard(ServerPlayer player) {
 		List<Component> lines = List.of(
 				Component.literal("Score: " + readScore(player, SCORE_OBJECTIVE_NAME)),
-				Component.empty(),
 				teamLine(player),
 				Component.empty(),
 				Component.literal("Leaderboard:"),
@@ -141,7 +195,7 @@ public final class SidebarContentBuilder {
 		return new SidebarContent(TITLE, lines);
 	}
 
-	/** Milestone 14: mini mode now also shows the player's team. */
+	/** Mini layout: just Score and Team. */
 	private static SidebarContent buildMini(ServerPlayer player) {
 		List<Component> lines = List.of(
 				Component.literal("Score: " + readScore(player, SCORE_OBJECTIVE_NAME)),
@@ -169,12 +223,10 @@ public final class SidebarContentBuilder {
 	}
 
 	/**
-	 * Reads a plain-string scoreboard holder's value (e.g. a team's
-	 * fake-player entry such as "Red") for an existing objective, or 0 if
-	 * either is absent. Same read-only semantics as readScore, but for a
-	 * holder name that isn't a real player -- this is what fixes the
-	 * Milestone 13 leaderboard bug, where team totals were never read at
-	 * all and instead hardcoded to 0.
+	 * Reads a plain-string scoreboard holder's value (e.g. a fake-player
+	 * entry such as "#team1" or "#Game") for an existing objective, or 0
+	 * if either is absent. Same read-only semantics as readScore, but for
+	 * a holder name that isn't a real online player.
 	 */
 	private static int readNamedScore(ServerPlayer player, String objectiveName, String holderName) {
 		Scoreboard scoreboard = ((ServerLevel) player.level()).getServer().getScoreboard();
@@ -193,23 +245,26 @@ public final class SidebarContentBuilder {
 	}
 
 	/**
-	 * "Your Team: <name>" line, shared by every visible layout as of
-	 * Milestone 14 so the read/format logic only lives in one place.
+	 * "Team: <name>" line, shared by every visible layout so the
+	 * read/format logic only lives in one place. Matches the spec's
+	 * literal "Team: ####" wording (not "Your Team:").
 	 */
 	private static Component teamLine(ServerPlayer player) {
-		return Component.literal("Your Team: ").append(readTeamDisplayName(player));
+		return Component.literal("Team: ").append(readTeamDisplayName(player));
 	}
 
 	/**
 	 * Entity#getTeam() actually returns PlayerTeam, not the abstract Team
-	 * superclass -- getDisplayName()/getFormattedDisplayName() are only
-	 * declared on PlayerTeam, which is why typing this as Team hid them
-	 * earlier. getFormattedDisplayName() returns the team's display name
-	 * (set via /team add ... "<name>" or /team modify ... displayName)
-	 * with the team's color/formatting already applied by Minecraft --
-	 * nothing styled by this mod. getTeam() itself is read-only: it
-	 * reports whichever team (if any) the player is already on via
-	 * /team, it never creates or joins one.
+	 * superclass -- getFormattedDisplayName() is only declared on
+	 * PlayerTeam. It returns the team's display name (set via
+	 * /team add ... "<name>" or /team modify ... displayName) with the
+	 * team's color/formatting already applied by Minecraft -- nothing
+	 * styled by this mod. getTeam() itself is read-only: it reports
+	 * whichever team (if any) the player is already on via /team, it
+	 * never creates or joins one. This is how "team1".."team4" (the real
+	 * team names) end up displaying as "Red"/"Yellow"/etc -- that mapping
+	 * lives entirely in the datapack's /team modify ... displayName
+	 * commands, not in this mod.
 	 */
 	private static Component readTeamDisplayName(ServerPlayer player) {
 		PlayerTeam team = player.getTeam();
@@ -220,13 +275,65 @@ public final class SidebarContentBuilder {
 	}
 
 	/**
-	 * Converts capture point entries into one sidebar line per entry, in
-	 * order. owner/progress are ignored for now -- Milestone 12 only
-	 * introduces the fields, a later milestone will render them.
+	 * One line per enabled capture point, in ascending order (order
+	 * comes directly from each entity's own "capture_point" score).
+	 * Disabled points (capture_point_enabled == 0) are omitted entirely,
+	 * per spec -- they don't get a line at all, not even a placeholder.
 	 */
-	private static List<Component> capturePointLines(List<CapturePointEntry> capturePoints) {
-		return capturePoints.stream()
-				.map(entry -> (Component) Component.literal(entry.name()))
-				.toList();
+	private static List<Component> capturePointStatusLines(ServerPlayer player) {
+		List<Component> lines = new ArrayList<>();
+		for (CapturePointEntry point : capturePointProvider.getCapturePoints(player)) {
+			if (!point.enabled()) {
+				continue;
+			}
+			lines.add(Component.literal("#" + point.order() + " ").append(capturePointStatus(point)));
+		}
+		return lines;
+	}
+
+	/**
+	 * Renders one capture point's status symbol + label:
+	 *   - capturingState != 0 -> "⚔ <capturingTeam> capturing (m:ss)"
+	 *     (covers both "capturing for the first time" and "recapturing" --
+	 *     the spec doesn't distinguish their display, both just show ⚔
+	 *     plus the capturing team and remaining time)
+	 *   - team == 0            -> "⬜ Uncaptured"
+	 *   - otherwise             -> "❎ <team>" (colored per team)
+	 */
+	private static Component capturePointStatus(CapturePointEntry point) {
+		if (point.capturingState() != 0) {
+			return Component.literal("\u2694 ")
+					.append(teamLabel(point.capturingTeam()))
+					.append(Component.literal(" capturing (" + formatTime(point.timeTicks()) + ")"));
+		}
+		if (point.team() == 0) {
+			return Component.literal("\u2b1c Uncaptured");
+		}
+		return Component.literal("\u274e ").append(teamLabel(point.team()));
+	}
+
+	/** Team id -> colored name, per the datapack's 1=Red,2=Yellow,3=Green,4=Blue,5=Grey convention. */
+	private static Component teamLabel(int teamId) {
+		return switch (teamId) {
+			case 1 -> Component.literal("Red").withStyle(ChatFormatting.RED);
+			case 2 -> Component.literal("Yellow").withStyle(ChatFormatting.YELLOW);
+			case 3 -> Component.literal("Green").withStyle(ChatFormatting.GREEN);
+			case 4 -> Component.literal("Blue").withStyle(ChatFormatting.BLUE);
+			case 5 -> Component.literal("Grey").withStyle(ChatFormatting.GRAY);
+			default -> Component.literal("None");
+		};
+	}
+
+	/**
+	 * Ticks -> "m:ss". Per spec, this formatting is only specified for
+	 * capture_point_time -- random/global event durations are printed as
+	 * raw score values instead (see buildEvents), since the spec never
+	 * said those were ticks needing conversion.
+	 */
+	private static String formatTime(int ticks) {
+		int totalSeconds = Math.max(0, ticks) / 20;
+		int minutes = totalSeconds / 60;
+		int seconds = totalSeconds % 60;
+		return minutes + ":" + (seconds < 10 ? "0" + seconds : seconds);
 	}
 }

@@ -26,6 +26,13 @@ import java.util.Optional;
  *   means faster detection of real changes, not more packets.
  * - Wires in ScoreboardSidebarModeProvider (real datapack-driven mode)
  *   in place of PlaceholderSidebarModeProvider.
+ *
+ * Milestone 15:
+ * - Wires in RealCapturePointProvider (real tagged armor stands) in
+ *   place of the Milestone 8-12 placeholder.
+ * - Removed the per-tick TEMP debug logging from the tick loop -- it
+ *   was only ever meant to be temporary and is no longer needed now
+ *   that the mode/content pipeline is trusted.
  */
 public final class SidebarMod implements ModInitializer {
 
@@ -44,6 +51,7 @@ public final class SidebarMod implements ModInitializer {
 		LOGGER.info("[LMSSMP Sidebar] Mod initialized successfully");
 
 		SidebarContentBuilder.setSidebarModeProvider(new ScoreboardSidebarModeProvider());
+		SidebarContentBuilder.setCapturePointProvider(new RealCapturePointProvider());
 
 		// Build the sidebar as soon as a player's connection is fully set
 		// up, so they don't wait up to a full REFRESH_INTERVAL_TICKS for
@@ -70,16 +78,10 @@ public final class SidebarMod implements ModInitializer {
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
 			Optional<SidebarContent> contentOpt = SidebarContentBuilder.buildSidebarContent(player);
 			SidebarContent previous = SidebarManager.getLastContent(player);
-			String name = player.getGameProfile().name();
 
-			// TEMP debug logging -- safe to delete once this is trusted,
-			// kept to one line per player so it's easy to grep and remove.
 			if (contentOpt.isEmpty()) {
 				if (previous != null) {
 					SidebarManager.removeSidebar(player);
-					LOGGER.info("[Sidebar] Hidden {}", name);
-				} else {
-					LOGGER.info("[Sidebar] No changes for {}", name);
 				}
 				continue;
 			}
@@ -87,7 +89,6 @@ public final class SidebarMod implements ModInitializer {
 			SidebarContent content = contentOpt.get();
 
 			if (content.equals(previous)) {
-				LOGGER.info("[Sidebar] No changes for {}", name);
 				continue;
 			}
 
@@ -96,7 +97,6 @@ public final class SidebarMod implements ModInitializer {
 			} else {
 				SidebarManager.updateSidebar(player, previous, content);
 			}
-			LOGGER.info("[Sidebar] Updated {}", name);
 		}
 	}
 }
