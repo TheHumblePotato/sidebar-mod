@@ -86,7 +86,7 @@ public final class RealCapturePointProvider implements CapturePointProvider {
 	private static final String OBJ_TIME = "capture_point_time";
 
 	/** Vanilla's default max world-border radius, used as the search box half-width. */
-	private static final double SEARCH_RADIUS = 3.0E7;
+	private static final double SEARCH_RADIUS = 10000;
 
 	/**
 	 * How often the expensive world-wide entity scan (getEntitiesOfClass)
@@ -96,7 +96,7 @@ public final class RealCapturePointProvider implements CapturePointProvider {
 	 * your setup adds/removes control points at runtime and needs faster
 	 * pickup of new ones.
 	 */
-	private static final long ENTITY_RESCAN_INTERVAL_TICKS = 100;
+	private static final long ENTITY_RESCAN_INTERVAL_TICKS = 200;
 
 	/**
 	 * Hardcoded generous vertical range instead of calling
@@ -106,8 +106,8 @@ public final class RealCapturePointProvider implements CapturePointProvider {
 	 * -64..320 range) with wide margin; widen further if your world uses
 	 * a custom dimension with a taller column.
 	 */
-	private static final double MIN_Y = -2048;
-	private static final double MAX_Y = 2048;
+	private static final double MIN_Y = -64;
+	private static final double MAX_Y = 320;
 
 	/**
 	 * One cache entry per ServerLevel, holding the tick it was computed
