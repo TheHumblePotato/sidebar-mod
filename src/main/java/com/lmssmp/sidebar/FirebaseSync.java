@@ -65,6 +65,7 @@ public final class FirebaseSync {
 	private static final String RANDOM_EVENT_ACTIVE_OBJ = "random_event_active";
 	private static final String RANDOM_EVENT_DURATION_OBJ = "random_event_duration";
 	private static final String GLOBAL_EVENT_ACTIVE_OBJ = "global_event_active";
+	private static final String GLOBAL_EVENT_TIME_LIMIT_OBJ = "global_event_time_limit";
 	private static final String GLOBAL_EVENT_DURATION_OBJ = "global_event_duration";
 	private static final String RANDOM_EVENT_NAME_KEY = "random_event_name";
 	private static final String GLOBAL_EVENT_NAME_KEY = "global_event_name";
@@ -130,7 +131,9 @@ public final class FirebaseSync {
 				: 0;
 
 		boolean globalEventActive = readNamedScore(scoreboard, GLOBAL_EVENT_ACTIVE_OBJ, GAME_HOLDER) == 1;
-		int globalEventDuration = globalEventActive
+		boolean globalEventHasDuration = globalEventActive
+				&& readNamedScore(scoreboard, GLOBAL_EVENT_TIME_LIMIT_OBJ, GAME_HOLDER) == 1;
+		int globalEventDuration = globalEventHasDuration
 				? readNamedScore(scoreboard, GLOBAL_EVENT_DURATION_OBJ, GAME_HOLDER)
 				: 0;
 
@@ -188,6 +191,7 @@ public final class FirebaseSync {
 				.append("\"globalEvent\":{")
 				.append("\"active\":").append(globalEventActive).append(",")
 				.append("\"name\":").append(jsonString(globalEventName)).append(",")
+				.append("\"hasDuration\":").append(globalEventHasDuration).append(",")
 				.append("\"duration\":").append(globalEventDuration)
 				.append("}")
 				.append("},");
