@@ -146,13 +146,20 @@ public final class FirebaseSync {
 				? new RealCapturePointProvider().getCapturePoints(anyPlayer)
 				: List.of();
 
-		StringBuilder cpJson = new StringBuilder("[");
+		// Keyed by "cp_<order>" rather than a plain JSON array. Firebase
+		// RTDB stores arrays as objects internally anyway and will
+		// silently reindex/coerce them if a middle index is ever missing
+		// (e.g. a capture point temporarily disabled/removed) -- keying
+		// explicitly by control point number sidesteps that entirely and
+		// lets a web app/Discord bot read one specific point directly
+		// (.../capturePoints/cp_3) instead of scanning an array.
+		StringBuilder cpJson = new StringBuilder("{");
 		for (int i = 0; i < capturePoints.size(); i++) {
 			CapturePointEntry point = capturePoints.get(i);
 			if (i > 0) {
 				cpJson.append(",");
 			}
-			cpJson.append("{")
+			cpJson.append("\"cp_").append(point.order()).append("\":{")
 					.append("\"order\":").append(point.order()).append(",")
 					.append("\"enabled\":").append(point.enabled()).append(",")
 					.append("\"team\":").append(point.team()).append(",")
@@ -161,7 +168,7 @@ public final class FirebaseSync {
 					.append("\"timeTicks\":").append(point.timeTicks())
 					.append("}");
 		}
-		cpJson.append("]");
+		cpJson.append("}");
 
 		StringBuilder json = new StringBuilder("{");
 		json.append("\"updatedAtTick\":").append(server.getTickCount()).append(",");
