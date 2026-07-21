@@ -33,6 +33,15 @@ import java.util.Optional;
  * - Removed the per-tick TEMP debug logging from the tick loop -- it
  *   was only ever meant to be temporary and is no longer needed now
  *   that the mode/content pipeline is trusted.
+ *
+ * Firebase sync (post-15):
+ * - A second, independent tick counter (ticksSinceLastFirebaseSync)
+ *   drives FirebaseSync.sync(server) every FIREBASE_SYNC_INTERVAL_TICKS
+ *   (~40s by default). Deliberately separate from the sidebar refresh
+ *   counter -- the two run on completely different cadences (5x/sec vs
+ *   ~once every 40s) and have nothing to do with each other. This does
+ *   not touch anything player-connection-related; it's a read-only
+ *   scoreboard/game-state snapshot pushed out over HTTP.
  */
 public final class SidebarMod implements ModInitializer {
 
@@ -42,9 +51,13 @@ public final class SidebarMod implements ModInitializer {
 	private static final Logger LOGGER = LoggerFactory.getLogger("LMSSMP Sidebar");
 
 	/** How often (in server ticks) every online player's sidebar is checked for changes. 4 ticks ~= 5x/sec. */
-	private static final int REFRESH_INTERVAL_TICKS = 10;
+	private static final int REFRESH_INTERVAL_TICKS = 20;
+
+	/** How often (in server ticks) global data is pushed to Firebase. 800 ticks ~= 40 seconds. */
+	private static final int FIREBASE_SYNC_INTERVAL_TICKS = 800;
 
 	private int ticksSinceLastRefresh = 0;
+	private int ticksSinceLastFirebaseSync = 0;
 
 	@Override
 	public void onInitialize() {
@@ -70,11 +83,19 @@ public final class SidebarMod implements ModInitializer {
 
 	private void onServerTick(MinecraftServer server) {
 		ticksSinceLastRefresh++;
-		if (ticksSinceLastRefresh < REFRESH_INTERVAL_TICKS) {
-			return;
+		if (ticksSinceLastRefresh >= REFRESH_INTERVAL_TICKS) {
+			ticksSinceLastRefresh = 0;
+			refreshSidebars(server);
 		}
-		ticksSinceLastRefresh = 0;
 
+		ticksSinceLastFirebaseSync++;
+		if (ticksSinceLastFirebaseSync >= FIREBASE_SYNC_INTERVAL_TICKS) {
+			ticksSinceLastFirebaseSync = 0;
+			FirebaseSync.sync(server);
+		}
+	}
+
+	private void refreshSidebars(MinecraftServer server) {
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
 			Optional<SidebarContent> contentOpt = SidebarContentBuilder.buildSidebarContent(player);
 			SidebarContent previous = SidebarManager.getLastContent(player);
